@@ -2,28 +2,25 @@
 import { MongoClient } from 'mongodb';
 
 /**
- * MongoDB Atlas Bridge v1.3
- * Securely handles connections to Cluster0
+ * MongoDB Atlas Bridge v1.4
+ * Target: Cluster0
  */
 const uri = "mongodb+srv://Zayn:Temp1122@cluster0.orvyxn0.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
-// Global cache for the client to prevent connection exhaustion
 let cachedClient = null;
 
 async function getClient() {
   if (cachedClient) return cachedClient;
-
   const client = new MongoClient(uri, {
     connectTimeoutMS: 15000,
     serverSelectionTimeoutMS: 15000,
   });
-
   try {
     await client.connect();
     cachedClient = client;
     return client;
   } catch (err) {
-    console.error("Critical Connection Failure:", err.message);
+    console.error("Connection Error:", err.message);
     throw err;
   }
 }
@@ -36,8 +33,9 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // dbName is now passed from the frontend for dynamic environment switching
   const { action, collection, filter, update, upsert, dbName } = req.body;
+  
+  // CRITICAL FIX: Explicitly default to 'MessengerFlow' to prevent 'local' DB permission errors
   const targetDbName = dbName || 'MessengerFlow';
   
   try {
@@ -51,10 +49,10 @@ export default async function handler(req, res) {
       case 'ping':
         await db.command({ ping: 1 });
         return res.status(200).json({ 
-            ok: true, 
-            cluster: "Cluster0", 
-            database: targetDbName,
-            status: "ONLINE" 
+          ok: true, 
+          database: targetDbName,
+          cluster: "Cluster0", 
+          status: "ONLINE" 
         });
 
       case 'find':
@@ -68,7 +66,7 @@ export default async function handler(req, res) {
       case 'updateOne':
         const finalFilter = filter || { id: update?.$set?.id };
         if (!finalFilter.id && !update?.$set?.id) {
-            throw new Error("Missing Unique ID (Persistence Denied)");
+            throw new Error("Persistence Denied: Missing Unique ID");
         }
         
         result = await col.updateOne(
@@ -97,7 +95,6 @@ export default async function handler(req, res) {
     console.error(`Atlas Error [${targetDbName}]:`, error.message);
     return res.status(500).json({ 
       error: error.message,
-      code: error.code,
       suggestion: "Check your database name and ensure IP 0.0.0.0/0 is whitelisted in Atlas."
     });
   }
