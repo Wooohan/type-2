@@ -1,11 +1,11 @@
 
 import React, { useState } from 'react';
-import { Shield, Globe, User, Database, CheckCircle2, RefreshCw, AlertTriangle, Loader2, Key, Code, HardDrive, Server, ExternalLink, Settings, Save, Zap, Activity } from 'lucide-react';
+import { Shield, Globe, User, Database, CheckCircle2, RefreshCw, AlertTriangle, Loader2, Key, Code, HardDrive, Server, ExternalLink, Settings, Save, Zap, Activity, Bug } from 'lucide-react';
 import { useApp } from '../../store/AppContext';
 import { UserRole } from '../../types';
 
 const SettingsView: React.FC = () => {
-  const { currentUser, dbStatus, dbName, updateDbName, provisionDatabase, clearLocalChats, syncFullHistory } = useApp();
+  const { currentUser, dbStatus, dbName, dbError, updateDbName, forceWriteTest, provisionDatabase, clearLocalChats, syncFullHistory } = useApp();
   const isAdmin = currentUser?.role === UserRole.SUPER_ADMIN;
 
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
@@ -22,15 +22,15 @@ const SettingsView: React.FC = () => {
     setIsUpdating(false);
   };
 
-  const handleProvision = async () => {
+  const handleForceWrite = async () => {
     setIsProvisioning(true);
     setProvisionSuccess(null);
-    const success = await provisionDatabase();
+    const success = await forceWriteTest();
     setProvisionSuccess(success);
     setIsProvisioning(false);
     
     if (success) {
-      setTimeout(() => setProvisionSuccess(null), 5000);
+      setTimeout(() => setProvisionSuccess(null), 8000);
     }
   };
 
@@ -69,12 +69,16 @@ const SettingsView: React.FC = () => {
               <div className="space-y-3 relative z-10">
                  <div className="flex justify-between text-[10px] font-black uppercase">
                     <span className="text-slate-500">Node Status</span>
-                    <span className={dbStatus === 'connected' ? 'text-emerald-400' : 'text-rose-400'}>
+                    <span className={dbStatus === 'connected' ? 'text-emerald-400' : 
+                                    dbStatus === 'syncing' ? 'text-blue-400' : 'text-rose-400'}>
                       {dbStatus.toUpperCase()}
                     </span>
                  </div>
                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                    <div className={`h-full transition-all duration-1000 ${dbStatus === 'connected' ? 'bg-emerald-500 w-full' : 'bg-rose-500 w-1/4'}`} />
+                    <div className={`h-full transition-all duration-1000 ${
+                      dbStatus === 'connected' ? 'bg-emerald-500 w-full' : 
+                      dbStatus === 'syncing' ? 'bg-blue-500 w-1/2' : 'bg-rose-500 w-1/4'
+                    }`} />
                  </div>
               </div>
               <div className="pt-2 space-y-1 relative z-10">
@@ -86,22 +90,51 @@ const SettingsView: React.FC = () => {
         </div>
 
         <div className="md:col-span-2 space-y-6">
+           {/* Diagnostics Console - NEW */}
+           {dbStatus === 'error' && (
+             <div className="bg-slate-900 rounded-[32px] border-2 border-rose-500/30 p-8 space-y-6 shadow-2xl animate-in shake duration-500">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3 text-rose-500">
+                    <Bug size={24} />
+                    <h3 className="font-black text-xs uppercase tracking-widest">Diagnostics Console</h3>
+                  </div>
+                  <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                </div>
+                <div className="bg-black/40 rounded-2xl p-6 font-mono text-[11px] text-rose-300 border border-white/5 space-y-2">
+                  <p className="text-slate-500 tracking-tighter">[DRV_INIT] Atlas Node Handshake Requested...</p>
+                  <p className="text-slate-500 tracking-tighter">[DB_TARGET] Database: "{dbName}"</p>
+                  <p className="text-rose-400 font-bold break-words">[ERROR_STR] {dbError || "Connection Timeout: Check Atlas Network Whitelist (0.0.0.0/0)"}</p>
+                </div>
+                <div className="space-y-4">
+                  <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
+                    The MongoDB Atlas driver reported a specific error above. If it says <strong>"IP not whitelisted"</strong>, you MUST go to Atlas -> Network Access -> Add IP Address -> 0.0.0.0/0.
+                  </p>
+                  <button 
+                    onClick={() => window.location.reload()}
+                    className="w-full py-4 bg-white/5 hover:bg-white/10 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest border border-white/10 transition-all"
+                  >
+                    Refresh Connection
+                  </button>
+                </div>
+             </div>
+           )}
+
            {/* Database Configuration Card */}
            {isAdmin && (
-             <div className="bg-white p-8 md:p-10 rounded-[48px] border-2 border-blue-50 shadow-xl space-y-6 animate-in slide-in-from-top-4 duration-500">
+             <div className="bg-white p-8 md:p-10 rounded-[48px] border-2 border-blue-50 shadow-xl space-y-6">
                 <div className="flex items-center gap-4 border-b border-slate-50 pb-6">
                    <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-100">
                       <Settings size={24} />
                    </div>
                    <div>
-                     <h3 className="text-xl font-black text-slate-900 tracking-tight">Database Configuration</h3>
-                     <p className="text-xs text-slate-400 font-medium">Select your target Atlas environment</p>
+                     <h3 className="text-xl font-black text-slate-900 tracking-tight">Database Control</h3>
+                     <p className="text-xs text-slate-400 font-medium">Configure and Provision environments</p>
                    </div>
                 </div>
 
                 <form onSubmit={handleDbUpdate} className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Atlas Database Name</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Current Instance Name</label>
                     <div className="flex gap-2">
                       <input 
                         type="text"
@@ -116,20 +149,20 @@ const SettingsView: React.FC = () => {
                         className="px-6 py-4 bg-slate-900 text-white rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-600 transition-all disabled:opacity-30 shadow-lg"
                       >
                         {isUpdating ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                        Sync
+                        Update
                       </button>
                     </div>
                   </div>
                 </form>
 
                 <div className="pt-4 border-t border-slate-50">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Provisioning Tools</h4>
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Verification Tool</h4>
                   <div className="p-6 bg-blue-50/50 rounded-3xl border border-blue-100 space-y-4">
                     <p className="text-[11px] text-blue-800 font-medium leading-relaxed">
-                      If your database is blank, click the button below to force-write the Master Admin and a system heartbeat to Atlas. This confirms your write permissions are correct.
+                      Click below to <strong>Force Write</strong> a verification document to the <strong>"Test"</strong> collection you created. This will appear in your Atlas dashboard immediately if the connection is active.
                     </p>
                     <button 
-                      onClick={handleProvision}
+                      onClick={handleForceWrite}
                       disabled={isProvisioning}
                       className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-md ${
                         provisionSuccess === true ? 'bg-emerald-500 text-white' : 
@@ -137,12 +170,12 @@ const SettingsView: React.FC = () => {
                       }`}
                     >
                       {isProvisioning ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
-                      {provisionSuccess === true ? 'Provisioned Successfully' : 
-                       provisionSuccess === false ? 'Provisioning Failed' : 'Write Test Data to Atlas'}
+                      {provisionSuccess === true ? 'Check Atlas Dashboard Now!' : 
+                       provisionSuccess === false ? 'Write Failed (Check Console)' : 'Force Write to "Test" Collection'}
                     </button>
-                    {provisionSuccess && (
-                      <p className="text-[9px] text-emerald-600 font-black uppercase text-center animate-in fade-in">
-                        Data should now be visible in your Atlas "MessengerFlow" database!
+                    {provisionSuccess === true && (
+                      <p className="text-[10px] text-emerald-600 font-black uppercase text-center animate-bounce">
+                        ✔ Open Atlas Data Explorer -> MessengerFlow -> Test
                       </p>
                     )}
                   </div>
@@ -151,30 +184,6 @@ const SettingsView: React.FC = () => {
            )}
 
            <div className="bg-white p-8 md:p-10 rounded-[48px] border border-slate-100 shadow-sm space-y-8">
-              {dbStatus === 'error' && (
-                <div className="p-6 bg-rose-50 border border-rose-100 rounded-[32px] space-y-4 animate-in shake duration-500">
-                  <div className="flex items-center gap-3 text-rose-600">
-                    <AlertTriangle size={24} />
-                    <h4 className="font-black text-sm uppercase tracking-tight">Atlas Connection Failed</h4>
-                  </div>
-                  <div className="space-y-3">
-                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                      The bridge cannot communicate with <span className="font-bold">Cluster0</span> on database <span className="font-bold">"{dbName}"</span>.
-                    </p>
-                    <ul className="text-xs text-slate-500 space-y-2 ml-4 list-disc font-medium">
-                      <li>Check if <strong>0.0.0.0/0</strong> is whitelisted in Atlas Network Access.</li>
-                      <li>Ensure your database name matches your Atlas Data Explorer.</li>
-                    </ul>
-                  </div>
-                  <button 
-                    onClick={() => window.location.reload()}
-                    className="flex items-center gap-2 text-[10px] font-black text-rose-600 uppercase tracking-widest bg-white px-4 py-2 rounded-full border border-rose-200 hover:bg-rose-100 transition-all"
-                  >
-                    <RefreshCw size={12} /> Retry Handshake
-                  </button>
-                </div>
-              )}
-
               <div className="space-y-6">
                 <div className="flex items-center gap-4 border-b border-slate-50 pb-6">
                    <div className="p-3 bg-slate-900 text-white rounded-2xl">
@@ -194,7 +203,7 @@ const SettingsView: React.FC = () => {
                     <div>
                       <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight">Multi-Device Synchronized</h4>
                       <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                        Data is stored in your personal Cluster0 within database <strong>"{dbName}"</strong>. Collections like <em>agents</em> and <em>pages</em> are provisioned automatically.
+                        The current portal is attempting to communicate with database <strong>"{dbName}"</strong> on your Atlas Cluster.
                       </p>
                     </div>
                   </div>
