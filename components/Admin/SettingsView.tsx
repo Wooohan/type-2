@@ -1,16 +1,18 @@
 
 import React, { useState } from 'react';
-import { Shield, Globe, User, Database, CheckCircle2, RefreshCw, AlertTriangle, Loader2, Key, Code, HardDrive, Server, ExternalLink, Settings, Save } from 'lucide-react';
+import { Shield, Globe, User, Database, CheckCircle2, RefreshCw, AlertTriangle, Loader2, Key, Code, HardDrive, Server, ExternalLink, Settings, Save, Zap, Activity } from 'lucide-react';
 import { useApp } from '../../store/AppContext';
 import { UserRole } from '../../types';
 
 const SettingsView: React.FC = () => {
-  const { currentUser, dbStatus, dbName, updateDbName, clearLocalChats, syncFullHistory } = useApp();
+  const { currentUser, dbStatus, dbName, updateDbName, provisionDatabase, clearLocalChats, syncFullHistory } = useApp();
   const isAdmin = currentUser?.role === UserRole.SUPER_ADMIN;
 
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
   const [newDbName, setNewDbName] = useState(dbName);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isProvisioning, setIsProvisioning] = useState(false);
+  const [provisionSuccess, setProvisionSuccess] = useState<boolean | null>(null);
 
   const handleDbUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,6 +20,18 @@ const SettingsView: React.FC = () => {
     setIsUpdating(true);
     await updateDbName(newDbName);
     setIsUpdating(false);
+  };
+
+  const handleProvision = async () => {
+    setIsProvisioning(true);
+    setProvisionSuccess(null);
+    const success = await provisionDatabase();
+    setProvisionSuccess(success);
+    setIsProvisioning(false);
+    
+    if (success) {
+      setTimeout(() => setProvisionSuccess(null), 5000);
+    }
   };
 
   return (
@@ -72,7 +86,7 @@ const SettingsView: React.FC = () => {
         </div>
 
         <div className="md:col-span-2 space-y-6">
-           {/* New Database Configuration Card */}
+           {/* Database Configuration Card */}
            {isAdmin && (
              <div className="bg-white p-8 md:p-10 rounded-[48px] border-2 border-blue-50 shadow-xl space-y-6 animate-in slide-in-from-top-4 duration-500">
                 <div className="flex items-center gap-4 border-b border-slate-50 pb-6">
@@ -105,9 +119,34 @@ const SettingsView: React.FC = () => {
                         Sync
                       </button>
                     </div>
-                    <p className="text-[9px] text-slate-400 italic px-1">Note: This explicitly targets your database to avoid default 'local' DB permission errors.</p>
                   </div>
                 </form>
+
+                <div className="pt-4 border-t border-slate-50">
+                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Provisioning Tools</h4>
+                  <div className="p-6 bg-blue-50/50 rounded-3xl border border-blue-100 space-y-4">
+                    <p className="text-[11px] text-blue-800 font-medium leading-relaxed">
+                      If your database is blank, click the button below to force-write the Master Admin and a system heartbeat to Atlas. This confirms your write permissions are correct.
+                    </p>
+                    <button 
+                      onClick={handleProvision}
+                      disabled={isProvisioning}
+                      className={`w-full py-4 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-md ${
+                        provisionSuccess === true ? 'bg-emerald-500 text-white' : 
+                        provisionSuccess === false ? 'bg-rose-500 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'
+                      }`}
+                    >
+                      {isProvisioning ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
+                      {provisionSuccess === true ? 'Provisioned Successfully' : 
+                       provisionSuccess === false ? 'Provisioning Failed' : 'Write Test Data to Atlas'}
+                    </button>
+                    {provisionSuccess && (
+                      <p className="text-[9px] text-emerald-600 font-black uppercase text-center animate-in fade-in">
+                        Data should now be visible in your Atlas "MessengerFlow" database!
+                      </p>
+                    )}
+                  </div>
+                </div>
              </div>
            )}
 
