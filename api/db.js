@@ -1,13 +1,33 @@
 
 import { MongoClient } from 'mongodb';
 
-const uri = "mongodb+srv://Zayn:Temp@1122@cluster0.orvyxn0.mongodb.net/?appName=Cluster0";
-let client;
-let clientPromise;
+// Password 'Temp@1122' must be URL-encoded as 'Temp%401122' because of the '@' character.
+const uri = "mongodb+srv://Zayn:Temp%401122@cluster0.orvyxn0.mongodb.net/?appName=Cluster0";
 
-if (!clientPromise) {
-  client = new MongoClient(uri);
-  clientPromise = client.connect();
+let client = null;
+let clientPromise = null;
+
+async function getConnectedClient() {
+  if (clientPromise) {
+    try {
+      return await clientPromise;
+    } catch (e) {
+      // If the cached promise is rejected, clear it so we can try again
+      clientPromise = null;
+    }
+  }
+
+  client = new MongoClient(uri, {
+    connectTimeoutMS: 10000,
+    socketTimeoutMS: 45000,
+  });
+
+  clientPromise = client.connect().catch(err => {
+    clientPromise = null; // Clear on failure to allow retry
+    throw err;
+  });
+
+  return clientPromise;
 }
 
 export default async function handler(req, res) {
@@ -15,10 +35,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { action, collection, filter, update, upsert, dataSource, database } = req.body;
+  const { action, collection, filter, update, upsert, database } = req.body;
   
   try {
-    const connectedClient = await clientPromise;
+    const connectedClient = await getConnectedClient();
     const db = connectedClient.db(database || 'MessengerFlow');
     const col = db.collection(collection);
 
@@ -59,6 +79,9 @@ export default async function handler(req, res) {
     }
   } catch (error) {
     console.error('Database Error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      error: error.message,
+      suggestion: "Check your MongoDB Atlas IP Whitelist (allow 0.0.0.0/0 for serverless) and ensure the user has 'dbAdmin' or 'readWrite' permissions."
+    });
   }
 }
