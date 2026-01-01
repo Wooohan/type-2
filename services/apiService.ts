@@ -1,13 +1,9 @@
 
 import { User, FacebookPage, Conversation, Message, ApprovedLink, ApprovedMedia } from '../types';
 
-/**
- * API Service
- * Routes through the internal bridge to talk to Atlas.
- */
-
 class APIService {
   private apiPath: string = '/api/db';
+  private dbName: string = localStorage.getItem('messengerflow_db_name') || 'MessengerFlow';
 
   private async atlasRequest(action: string, collection: string, body: any) {
     try {
@@ -19,21 +15,35 @@ class APIService {
         body: JSON.stringify({
           action,
           collection,
+          dbName: this.dbName, // Always include the target database
           ...body
         })
       });
 
-      const result = await response.json();
+      let result;
+      try {
+        result = await response.json();
+      } catch (parseErr) {
+        throw new Error(`Cloud Error: ${response.status} (Handshake Failed)`);
+      }
       
-      // If we get any valid JSON response with status 200, the bridge is connected
       if (!response.ok) {
         throw new Error(result.error || `DB Status ${response.status}`);
       }
       return result;
     } catch (e) {
-      console.warn(`Atlas Bridge Request (${action}) failed:`, e.message);
+      console.warn(`Atlas bridge request failed for ${action}:`, e.message);
       throw e;
     }
+  }
+
+  setDatabase(name: string) {
+    this.dbName = name;
+    localStorage.setItem('messengerflow_db_name', name);
+  }
+
+  getDatabaseName() {
+    return this.dbName;
   }
 
   async ping(): Promise<boolean> {
@@ -50,7 +60,6 @@ class APIService {
       const result = await this.atlasRequest('find', collection, { filter });
       return result.documents || [];
     } catch (e) {
-      // Return empty array instead of throwing to keep the UI from crashing
       return [];
     }
   }
@@ -72,13 +81,8 @@ class APIService {
     await this.atlasRequest('deleteMany', collection, { filter: {} });
   }
 
-  setCredentials(endpoint: string, key: string): void {
-    console.debug('Cloud credentials updated.');
-  }
-
-  isConfigured(): boolean {
-    return true; 
-  }
+  setCredentials(endpoint: string, key: string): void {}
+  isConfigured(): boolean { return true; }
 }
 
 export const apiService = new APIService();
