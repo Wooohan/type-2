@@ -5,14 +5,6 @@ import { MASTER_ADMIN, MOCK_USERS } from '../constants';
 import { apiService } from '../services/apiService';
 import { fetchPageConversations, verifyPageAccessToken } from '../services/facebookService';
 
-interface DashboardStats {
-  openChats: number;
-  avgResponseTime: string;
-  resolvedToday: number;
-  csat: string;
-  chartData: { name: string; conversations: number }[];
-}
-
 interface AppContextType {
   currentUser: User | null;
   setCurrentUser: (user: User | null) => void;
@@ -41,15 +33,15 @@ interface AppContextType {
   approvedMedia: ApprovedMedia[];
   addApprovedMedia: (media: ApprovedMedia) => Promise<void>;
   removeApprovedMedia: (id: string) => Promise<void>;
-  dashboardStats: DashboardStats;
-  dbStatus: 'connected' | 'syncing' | 'error' | 'initializing' | 'unconfigured';
+  dbStatus: 'connected' | 'syncing' | 'error' | 'initializing';
   dbName: string;
+  dbError: string | null;
   updateDbName: (name: string) => Promise<void>;
   provisionDatabase: () => Promise<boolean>;
+  forceWriteTest: () => Promise<boolean>;
   clearLocalChats: () => Promise<void>;
   isHistorySynced: boolean;
-  simulateIncomingWebhook: () => Promise<void>;
-  generateFakeChats: () => Promise<void>;
+  dashboardStats: any;
   updateCloudCredentials: (endpoint: string, key: string) => Promise<void>;
 }
 
@@ -57,8 +49,9 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const USER_SESSION_KEY = 'messengerflow_cloud_session_v3';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [dbStatus, setDbStatus] = useState<'connected' | 'syncing' | 'error' | 'initializing' | 'unconfigured'>('initializing');
+  const [dbStatus, setDbStatus] = useState<'connected' | 'syncing' | 'error' | 'initializing'>('initializing');
   const [dbName, setDbName] = useState(apiService.getDatabaseName());
+  const [dbError, setDbError] = useState<string | null>(null);
   const [pages, setPages] = useState<FacebookPage[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [agents, setAgents] = useState<User[]>(MOCK_USERS);
@@ -70,10 +63,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const loadDataFromCloud = async () => {
     setDbStatus('syncing');
+    setDbError(null);
     try {
       const isAlive = await apiService.ping();
       if (!isAlive) {
         setDbStatus('error');
+        setDbError("Handshake timed out. Check IP whitelist (0.0.0.0/0) in Atlas.");
       } else {
         const [agentsData, pagesData, convsData, msgsData, linksData, mediaData] = await Promise.all([
           apiService.getAll<User>('agents'),
@@ -94,9 +89,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       const session = localStorage.getItem(USER_SESSION_KEY);
       if (session) setCurrentUser(JSON.parse(session));
-    } catch (err) {
-      console.error("Cloud error during load:", err);
+    } catch (err: any) {
       setDbStatus('error');
+      setDbError(err.message || "Unknown Connection Failure");
     }
   };
 
@@ -136,10 +131,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
     },
     agents,
-    addAgent: async (a) => { 
-      await apiService.put('agents', a); 
-      setAgents(prev => [...prev, a]); 
-    },
+    addAgent: async (a) => { await apiService.put('agents', a); setAgents(prev => [...prev, a]); },
     removeAgent: async (id) => { await apiService.delete('agents', id); setAgents(p => p.filter(a => a.id !== id)); },
     updateUser: async (id, u) => {
       const updated = agents.map(a => a.id === id ? { ...a, ...u } : a);
@@ -162,18 +154,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           return true;
         }
       } catch (err) {}
-      const localUser = MOCK_USERS.find(u => u.email === e && u.password === p);
-      if (localUser) {
-        setCurrentUser(localUser);
-        localStorage.setItem(USER_SESSION_KEY, JSON.stringify(localUser));
-        return true;
-      }
       return false;
     },
-    logout: async () => {
-      localStorage.removeItem(USER_SESSION_KEY);
-      setCurrentUser(null);
-    },
+    logout: async () => { localStorage.removeItem(USER_SESSION_KEY); setCurrentUser(null); },
     syncMetaConversations: async () => {
       setDbStatus('syncing');
       for (const page of pages) {
@@ -185,37 +168,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setConversations(all);
       setDbStatus('connected');
     },
-    syncFullHistory: async () => {
-      setIsHistorySynced(true);
-      await value.syncMetaConversations();
-    },
+    syncFullHistory: async () => { setIsHistorySynced(true); await value.syncMetaConversations(); },
     verifyPageConnection: async (id) => {
       const page = pages.find(p => p.id === id);
       return page ? await verifyPageAccessToken(id, page.accessToken) : false;
     },
-    simulateIncomingWebhook: async () => {},
-    generateFakeChats: async () => {},
     approvedLinks,
     addApprovedLink: async (l) => { await apiService.put('links', l); setApprovedLinks(p => [...p, l]); },
     removeApprovedLink: async (id) => { await apiService.delete('links', id); setApprovedLinks(p => p.filter(l => l.id !== id)); },
     approvedMedia,
     addApprovedMedia: async (m) => { await apiService.put('media', m); setApprovedMedia(p => [...p, m]); },
     removeApprovedMedia: async (id) => { await apiService.delete('media', id); setApprovedMedia(p => p.filter(m => m.id !== id)); },
-    dashboardStats: {
-      openChats: conversations.filter(c => c.status === ConversationStatus.OPEN).length,
-      avgResponseTime: "0m 45s",
-      resolvedToday: conversations.filter(c => c.status === ConversationStatus.RESOLVED).length,
-      csat: "99%",
-      chartData: [
-        { name: 'Mon', conversations: 14 },
-        { name: 'Tue', conversations: 28 },
-        { name: 'Wed', conversations: 31 },
-        { name: 'Thu', conversations: 19 },
-        { name: 'Fri', conversations: 44 }
-      ]
-    },
     dbStatus,
     dbName,
+    dbError,
     updateDbName: async (name) => {
       apiService.setDatabase(name);
       setDbName(name);
@@ -223,11 +189,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     },
     provisionDatabase: async () => {
       setDbStatus('syncing');
-      const testOk = await apiService.testWrite();
-      if (testOk) {
-        await apiService.put('agents', MASTER_ADMIN);
-        setDbStatus('connected');
-        return true;
+      try {
+        const testOk = await apiService.testWrite();
+        if (testOk) {
+          await apiService.put('agents', MASTER_ADMIN);
+          setDbStatus('connected');
+          return true;
+        }
+      } catch (e: any) {
+        setDbError(e.message);
+      }
+      setDbStatus('error');
+      return false;
+    },
+    forceWriteTest: async () => {
+      setDbStatus('syncing');
+      try {
+        const success = await apiService.manualWriteToTest();
+        if (success) {
+           setDbStatus('connected');
+           setDbError(null);
+           return true;
+        }
+      } catch (e: any) {
+        setDbError(e.message);
       }
       setDbStatus('error');
       return false;
@@ -238,10 +223,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       window.location.reload();
     },
     isHistorySynced,
-    updateCloudCredentials: async (endpoint, key) => {
-      apiService.setCredentials(endpoint, key);
-      await loadDataFromCloud();
-    }
+    dashboardStats: {
+      openChats: conversations.filter(c => c.status === ConversationStatus.OPEN).length,
+      avgResponseTime: "0m 45s",
+      resolvedToday: conversations.filter(c => c.status === ConversationStatus.RESOLVED).length,
+      csat: "99%",
+      chartData: [{ name: 'Mon', conversations: 14 }, { name: 'Tue', conversations: 28 }, { name: 'Wed', conversations: 31 }, { name: 'Thu', conversations: 19 }, { name: 'Fri', conversations: 44 }]
+    },
+    updateCloudCredentials: async () => {}
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
