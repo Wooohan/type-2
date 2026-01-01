@@ -15,7 +15,7 @@ class APIService {
         body: JSON.stringify({
           action,
           collection,
-          dbName: this.dbName, // Always include the target database
+          dbName: this.dbName,
           ...body
         })
       });
