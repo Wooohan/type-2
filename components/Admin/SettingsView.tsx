@@ -35,11 +35,11 @@ const SettingsView: React.FC = () => {
               <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-2">
                  <User size={24} />
               </div>
-              <h4 className="font-bold text-slate-800">{currentUser?.name}</h4>
+              <h4 className="font-bold text-slate-800">Zayn</h4>
               <p className="text-xs text-slate-400">Portal Architect</p>
               <div className="pt-2">
                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-blue-100 text-blue-600 uppercase tracking-widest">
-                    {currentUser?.role}
+                    Owner
                  </span>
               </div>
            </div>
@@ -54,7 +54,7 @@ const SettingsView: React.FC = () => {
               </div>
               <div className="space-y-3 relative z-10">
                  <div className="flex justify-between text-[10px] font-black uppercase">
-                    <span className="text-slate-500">Node Driver Status</span>
+                    <span className="text-slate-500">Node Status</span>
                     <span className={dbStatus === 'connected' ? 'text-emerald-400' : 'text-rose-400'}>
                       {dbStatus.toUpperCase()}
                     </span>
@@ -105,7 +105,7 @@ const SettingsView: React.FC = () => {
                         Sync
                       </button>
                     </div>
-                    <p className="text-[9px] text-slate-400 italic px-1">Tip: Change this to create a new isolated database instance (e.g. 'Test_Environment').</p>
+                    <p className="text-[9px] text-slate-400 italic px-1">Note: This explicitly targets your database to avoid default 'local' DB permission errors.</p>
                   </div>
                 </form>
              </div>
@@ -120,11 +120,11 @@ const SettingsView: React.FC = () => {
                   </div>
                   <div className="space-y-3">
                     <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                      The Node.js bridge is having trouble communicating with <span className="font-bold">Cluster0</span> on database <span className="font-bold">"{dbName}"</span>.
+                      The bridge cannot communicate with <span className="font-bold">Cluster0</span> on database <span className="font-bold">"{dbName}"</span>.
                     </p>
                     <ul className="text-xs text-slate-500 space-y-2 ml-4 list-disc font-medium">
                       <li>Check if <strong>0.0.0.0/0</strong> is whitelisted in Atlas Network Access.</li>
-                      <li>Ensure your database name matches your Atlas collections.</li>
+                      <li>Ensure your database name matches your Atlas Data Explorer.</li>
                     </ul>
                   </div>
                   <button 
@@ -155,7 +155,7 @@ const SettingsView: React.FC = () => {
                     <div>
                       <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight">Multi-Device Synchronized</h4>
                       <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                        The database connection is managed by a secure Node.js bridge. All portal data is stored directly in your personal Cluster0 within database <strong>"{dbName}"</strong>.
+                        Data is stored in your personal Cluster0 within database <strong>"{dbName}"</strong>. Collections like <em>agents</em> and <em>pages</em> are provisioned automatically.
                       </p>
                     </div>
                   </div>
@@ -199,7 +199,7 @@ const SettingsView: React.FC = () => {
             </div>
             <h3 className="text-xl font-black text-slate-900 mb-4">CONFIRM PURGE</h3>
             <p className="text-slate-500 text-sm mb-8 leading-relaxed">
-              This will clear the local frontend index for <strong>{dbName}</strong>.
+              This clears the local cache for <strong>{dbName}</strong>. Data in Atlas remains untouched.
             </p>
             <div className="space-y-3">
               <button 
