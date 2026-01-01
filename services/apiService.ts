@@ -20,19 +20,14 @@ class APIService {
         })
       });
 
-      let result;
-      try {
-        result = await response.json();
-      } catch (parseErr) {
-        throw new Error(`Cloud Error: ${response.status} (Handshake Failed)`);
-      }
+      const result = await response.json();
       
       if (!response.ok) {
-        throw new Error(result.error || `DB Status ${response.status}`);
+        // Pass the detailed error from the backend up to the UI
+        throw new Error(result.error || `DB Connection Error (${response.status})`);
       }
       return result;
     } catch (e) {
-      console.warn(`Atlas bridge request failed for ${action}:`, e.message);
       throw e;
     }
   }
@@ -55,6 +50,27 @@ class APIService {
     }
   }
 
+  async manualWriteToTest(): Promise<boolean> {
+    try {
+      // Force write to the collection 'Test' shown in user screenshot
+      const result = await this.atlasRequest('updateOne', 'Test', {
+        filter: { id: 'verification_test' },
+        update: { 
+          $set: { 
+            id: 'verification_test',
+            timestamp: new Date().toISOString(),
+            portal_status: 'ACTIVE',
+            message: 'Write successful from MessengerFlow Portal'
+          } 
+        },
+        upsert: true
+      });
+      return result.ok === true;
+    } catch (e) {
+      throw e;
+    }
+  }
+
   async testWrite(): Promise<boolean> {
     try {
       const result = await this.atlasRequest('updateOne', 'provisioning_logs', {
@@ -63,16 +79,14 @@ class APIService {
           $set: { 
             id: 'heartbeat', 
             timestamp: new Date().toISOString(), 
-            status: 'SUCCESS',
-            message: 'Manual Provisioning Triggered'
+            status: 'SUCCESS'
           } 
         },
         upsert: true
       });
       return result.ok === true;
     } catch (e) {
-      console.error("Test write failed:", e);
-      return false;
+      throw e;
     }
   }
 
