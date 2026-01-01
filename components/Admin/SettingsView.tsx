@@ -1,14 +1,24 @@
 
 import React, { useState } from 'react';
-import { Shield, Globe, User, Database, CheckCircle2, RefreshCw, AlertTriangle, Loader2, Key, Code, HardDrive, Server, ExternalLink } from 'lucide-react';
+import { Shield, Globe, User, Database, CheckCircle2, RefreshCw, AlertTriangle, Loader2, Key, Code, HardDrive, Server, ExternalLink, Settings, Save } from 'lucide-react';
 import { useApp } from '../../store/AppContext';
 import { UserRole } from '../../types';
 
 const SettingsView: React.FC = () => {
-  const { currentUser, dbStatus, clearLocalChats, syncFullHistory } = useApp();
+  const { currentUser, dbStatus, dbName, updateDbName, clearLocalChats, syncFullHistory } = useApp();
   const isAdmin = currentUser?.role === UserRole.SUPER_ADMIN;
 
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
+  const [newDbName, setNewDbName] = useState(dbName);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const handleDbUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newDbName === dbName) return;
+    setIsUpdating(true);
+    await updateDbName(newDbName);
+    setIsUpdating(false);
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 px-4 md:px-0 pb-10">
@@ -25,11 +35,11 @@ const SettingsView: React.FC = () => {
               <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-2">
                  <User size={24} />
               </div>
-              <h4 className="font-bold text-slate-800">Zayn</h4>
+              <h4 className="font-bold text-slate-800">{currentUser?.name}</h4>
               <p className="text-xs text-slate-400">Portal Architect</p>
               <div className="pt-2">
                  <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-blue-100 text-blue-600 uppercase tracking-widest">
-                    Owner
+                    {currentUser?.role}
                  </span>
               </div>
            </div>
@@ -56,12 +66,51 @@ const SettingsView: React.FC = () => {
               <div className="pt-2 space-y-1 relative z-10">
                 <p className="text-[9px] text-slate-500 font-bold uppercase tracking-tight">Region: AWS / us-east-1</p>
                 <p className="text-[9px] text-slate-500 font-bold uppercase tracking-tight">Cluster: Cluster0</p>
-                <p className="text-[9px] text-blue-400 font-black uppercase tracking-tight">Auth: Internal Bridge</p>
+                <p className="text-[9px] text-blue-400 font-black uppercase tracking-tight">Active DB: {dbName}</p>
               </div>
            </div>
         </div>
 
         <div className="md:col-span-2 space-y-6">
+           {/* New Database Configuration Card */}
+           {isAdmin && (
+             <div className="bg-white p-8 md:p-10 rounded-[48px] border-2 border-blue-50 shadow-xl space-y-6 animate-in slide-in-from-top-4 duration-500">
+                <div className="flex items-center gap-4 border-b border-slate-50 pb-6">
+                   <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-lg shadow-blue-100">
+                      <Settings size={24} />
+                   </div>
+                   <div>
+                     <h3 className="text-xl font-black text-slate-900 tracking-tight">Database Configuration</h3>
+                     <p className="text-xs text-slate-400 font-medium">Select your target Atlas environment</p>
+                   </div>
+                </div>
+
+                <form onSubmit={handleDbUpdate} className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Atlas Database Name</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text"
+                        value={newDbName}
+                        onChange={(e) => setNewDbName(e.target.value)}
+                        className="flex-1 px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-500 font-bold text-slate-700"
+                        placeholder="e.g. MessengerFlow"
+                      />
+                      <button 
+                        type="submit"
+                        disabled={isUpdating || newDbName === dbName}
+                        className="px-6 py-4 bg-slate-900 text-white rounded-2xl font-bold flex items-center gap-2 hover:bg-blue-600 transition-all disabled:opacity-30 shadow-lg"
+                      >
+                        {isUpdating ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                        Sync
+                      </button>
+                    </div>
+                    <p className="text-[9px] text-slate-400 italic px-1">Tip: Change this to create a new isolated database instance (e.g. 'Test_Environment').</p>
+                  </div>
+                </form>
+             </div>
+           )}
+
            <div className="bg-white p-8 md:p-10 rounded-[48px] border border-slate-100 shadow-sm space-y-8">
               {dbStatus === 'error' && (
                 <div className="p-6 bg-rose-50 border border-rose-100 rounded-[32px] space-y-4 animate-in shake duration-500">
@@ -71,12 +120,11 @@ const SettingsView: React.FC = () => {
                   </div>
                   <div className="space-y-3">
                     <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                      The Node.js bridge is having trouble communicating with <span className="font-bold">Cluster0</span>. This usually happens if:
+                      The Node.js bridge is having trouble communicating with <span className="font-bold">Cluster0</span> on database <span className="font-bold">"{dbName}"</span>.
                     </p>
                     <ul className="text-xs text-slate-500 space-y-2 ml-4 list-disc font-medium">
-                      <li>The <span className="text-slate-800 font-bold">IP Access List</span> on Atlas is not allowing connections. For serverless deployment, ensure <strong>0.0.0.0/0</strong> is whitelisted.</li>
-                      <li>The database password contains special characters that weren't encoded (Fixed in v1.2.1).</li>
-                      <li>The cluster is currently paused or undergoing maintenance.</li>
+                      <li>Check if <strong>0.0.0.0/0</strong> is whitelisted in Atlas Network Access.</li>
+                      <li>Ensure your database name matches your Atlas collections.</li>
                     </ul>
                   </div>
                   <button 
@@ -107,7 +155,7 @@ const SettingsView: React.FC = () => {
                     <div>
                       <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight">Multi-Device Synchronized</h4>
                       <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                        The database connection is managed by a secure Node.js bridge. Your login (<strong>wooohan3@gmail.com</strong>) and all portal data are stored directly in your personal Cluster0.
+                        The database connection is managed by a secure Node.js bridge. All portal data is stored directly in your personal Cluster0 within database <strong>"{dbName}"</strong>.
                       </p>
                     </div>
                   </div>
@@ -151,7 +199,7 @@ const SettingsView: React.FC = () => {
             </div>
             <h3 className="text-xl font-black text-slate-900 mb-4">CONFIRM PURGE</h3>
             <p className="text-slate-500 text-sm mb-8 leading-relaxed">
-              This will clear the local frontend index. Data remains safe in your <span className="font-bold">Atlas Cluster0</span>.
+              This will clear the local frontend index for <strong>{dbName}</strong>.
             </p>
             <div className="space-y-3">
               <button 
