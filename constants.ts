@@ -1,17 +1,24 @@
 
 import { User, UserRole, FacebookPage, Conversation } from './types';
 
+/**
+ * MASTER ADMIN CREDENTIALS
+ * These are hardcoded to ensure the portal is always accessible
+ * even if the MongoDB Atlas cluster is offline or unreachable.
+ */
+export const MASTER_ADMIN: User = {
+  id: 'admin-master',
+  name: 'Zayn (Master)',
+  email: 'wooohan3@gmail.com',
+  password: 'Admin@1122',
+  role: UserRole.SUPER_ADMIN,
+  avatar: 'https://picsum.photos/seed/zayn-master/200',
+  status: 'online',
+  assignedPageIds: [],
+};
+
 export const MOCK_USERS: User[] = [
-  {
-    id: 'admin-0',
-    name: 'Main Admin',
-    email: 'wooohan3@gmail.com',
-    password: 'Admin@1122',
-    role: UserRole.SUPER_ADMIN,
-    avatar: 'https://picsum.photos/seed/admin-main/200',
-    status: 'online',
-    assignedPageIds: [],
-  },
+  MASTER_ADMIN,
   {
     id: 'admin-1',
     name: 'Alex Johnson',
@@ -24,6 +31,5 @@ export const MOCK_USERS: User[] = [
   }
 ];
 
-// Clean start: No mock pages or conversations
 export const MOCK_PAGES: FacebookPage[] = [];
 export const MOCK_CONVERSATIONS: Conversation[] = [];
