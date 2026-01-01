@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { User, UserRole, FacebookPage, Conversation, Message, ConversationStatus, ApprovedLink, ApprovedMedia } from '../types';
 import { MASTER_ADMIN, MOCK_USERS } from '../constants';
 import { apiService } from '../services/apiService';
@@ -51,7 +51,7 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-const USER_SESSION_KEY = 'messengerflow_cloud_session_v2';
+const USER_SESSION_KEY = 'messengerflow_cloud_session_v3';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [dbStatus, setDbStatus] = useState<'connected' | 'syncing' | 'error' | 'initializing' | 'unconfigured'>('initializing');
@@ -67,33 +67,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const loadDataFromCloud = async () => {
     setDbStatus('syncing');
     
-    // Attempt to load everything in parallel. 
-    // If we get any data back, we know we are connected.
     try {
-      const results = await Promise.allSettled([
-        apiService.getAll<User>('agents'),
-        apiService.getAll<FacebookPage>('pages'),
-        apiService.getAll<Conversation>('conversations'),
-        apiService.getAll<Message>('messages'),
-        apiService.getAll<ApprovedLink>('links'),
-        apiService.getAll<ApprovedMedia>('media')
-      ]);
+      // Step 1: Verification Ping - If this succeeds, the bridge is alive
+      const isAlive = await apiService.ping();
+      
+      if (!isAlive) {
+        setDbStatus('error');
+      } else {
+        // Step 2: Fetch data, but don't hang if database is empty
+        const [agentsData, pagesData, convsData, msgsData, linksData, mediaData] = await Promise.all([
+          apiService.getAll<User>('agents').catch(() => []),
+          apiService.getAll<FacebookPage>('pages').catch(() => []),
+          apiService.getAll<Conversation>('conversations').catch(() => []),
+          apiService.getAll<Message>('messages').catch(() => []),
+          apiService.getAll<ApprovedLink>('links').catch(() => []),
+          apiService.getAll<ApprovedMedia>('media').catch(() => [])
+        ]);
 
-      const success = results.some(r => r.status === 'fulfilled');
-
-      if (success) {
-        if (results[0].status === 'fulfilled' && results[0].value.length > 0) setAgents(results[0].value);
-        if (results[1].status === 'fulfilled') setPages(results[1].value);
-        if (results[2].status === 'fulfilled') setConversations(results[2].value);
-        if (results[3].status === 'fulfilled') setMessages(results[3].value);
-        if (results[4].status === 'fulfilled') setApprovedLinks(results[4].value);
-        if (results[5].status === 'fulfilled') setApprovedMedia(results[5].value);
+        if (agentsData.length > 0) setAgents(agentsData);
+        setPages(pagesData);
+        setConversations(convsData);
+        setMessages(msgsData);
+        setApprovedLinks(linksData);
+        setApprovedMedia(mediaData);
         
         setDbStatus('connected');
-      } else {
-        // If everything fails, try a simple ping check
-        const isAlive = await apiService.ping();
-        setDbStatus(isAlive ? 'connected' : 'error');
       }
 
       // Restore session
@@ -101,7 +99,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (session) setCurrentUser(JSON.parse(session));
 
     } catch (err) {
-      console.error("Critical connection failure:", err);
+      console.error("Connectivity issue:", err);
       setDbStatus('error');
       const session = localStorage.getItem(USER_SESSION_KEY);
       if (session) setCurrentUser(JSON.parse(session));
@@ -153,14 +151,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (agent) await apiService.put('agents', agent);
     },
     login: async (e, p) => {
-      // MASTER ADMIN ALWAYS WORKS REGARDLESS OF DB
+      // CRITICAL: MASTER ADMIN (ZAYN) ALWAYS WORKS FOR SYSTEM ACCESS
       if (e === MASTER_ADMIN.email && p === MASTER_ADMIN.password) {
         setCurrentUser(MASTER_ADMIN);
         localStorage.setItem(USER_SESSION_KEY, JSON.stringify(MASTER_ADMIN));
         return true;
       }
 
-      // Check DB if connected
+      // Check Cloud Database next
       try {
         const remoteAgents = await apiService.getAll<User>('agents');
         const remoteUser = remoteAgents.find(u => u.email === e && u.password === p);
@@ -170,10 +168,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           return true;
         }
       } catch (err) {
-        console.warn("DB login check skipped or failed");
+        console.warn("DB Auth unavailable, falling back to local mocks");
       }
 
-      // Fallback to local mocks
+      // Local Mock fallback
       const localUser = MOCK_USERS.find(u => u.email === e && u.password === p);
       if (localUser) {
         setCurrentUser(localUser);
@@ -219,11 +217,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       resolvedToday: conversations.filter(c => c.status === ConversationStatus.RESOLVED).length,
       csat: "99%",
       chartData: [
-        { name: 'Mon', conversations: Math.floor(Math.random() * 20) },
-        { name: 'Tue', conversations: Math.floor(Math.random() * 25) },
-        { name: 'Wed', conversations: Math.floor(Math.random() * 30) },
-        { name: 'Thu', conversations: Math.floor(Math.random() * 22) },
-        { name: 'Fri', conversations: Math.floor(Math.random() * 40) }
+        { name: 'Mon', conversations: 14 },
+        { name: 'Tue', conversations: 28 },
+        { name: 'Wed', conversations: 31 },
+        { name: 'Thu', conversations: 19 },
+        { name: 'Fri', conversations: 44 }
       ]
     },
     dbStatus,
