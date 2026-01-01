@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Shield, Globe, User, Database, CheckCircle2, RefreshCw, AlertTriangle, Loader2, Key, Code, HardDrive, Server } from 'lucide-react';
+import { Shield, Globe, User, Database, CheckCircle2, RefreshCw, AlertTriangle, Loader2, Key, Code, HardDrive, Server, ExternalLink } from 'lucide-react';
 import { useApp } from '../../store/AppContext';
 import { UserRole } from '../../types';
 
@@ -45,24 +45,49 @@ const SettingsView: React.FC = () => {
               <div className="space-y-3 relative z-10">
                  <div className="flex justify-between text-[10px] font-black uppercase">
                     <span className="text-slate-500">Node Driver Status</span>
-                    <span className={dbStatus === 'connected' ? 'text-emerald-400' : 'text-amber-400'}>
+                    <span className={dbStatus === 'connected' ? 'text-emerald-400' : 'text-rose-400'}>
                       {dbStatus.toUpperCase()}
                     </span>
                  </div>
                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                    <div className={`h-full transition-all duration-1000 ${dbStatus === 'connected' ? 'bg-emerald-500 w-full' : 'bg-amber-500 w-1/2'}`} />
+                    <div className={`h-full transition-all duration-1000 ${dbStatus === 'connected' ? 'bg-emerald-500 w-full' : 'bg-rose-500 w-1/4'}`} />
                  </div>
               </div>
               <div className="pt-2 space-y-1 relative z-10">
                 <p className="text-[9px] text-slate-500 font-bold uppercase tracking-tight">Region: AWS / us-east-1</p>
                 <p className="text-[9px] text-slate-500 font-bold uppercase tracking-tight">Cluster: Cluster0</p>
-                <p className="text-[9px] text-blue-400 font-black uppercase tracking-tight">Auth: Driver Verified</p>
+                <p className="text-[9px] text-blue-400 font-black uppercase tracking-tight">Auth: Internal Bridge</p>
               </div>
            </div>
         </div>
 
         <div className="md:col-span-2 space-y-6">
            <div className="bg-white p-8 md:p-10 rounded-[48px] border border-slate-100 shadow-sm space-y-8">
+              {dbStatus === 'error' && (
+                <div className="p-6 bg-rose-50 border border-rose-100 rounded-[32px] space-y-4 animate-in shake duration-500">
+                  <div className="flex items-center gap-3 text-rose-600">
+                    <AlertTriangle size={24} />
+                    <h4 className="font-black text-sm uppercase tracking-tight">Atlas Connection Failed</h4>
+                  </div>
+                  <div className="space-y-3">
+                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                      The Node.js bridge is having trouble communicating with <span className="font-bold">Cluster0</span>. This usually happens if:
+                    </p>
+                    <ul className="text-xs text-slate-500 space-y-2 ml-4 list-disc font-medium">
+                      <li>The <span className="text-slate-800 font-bold">IP Access List</span> on Atlas is not allowing connections. For serverless deployment, ensure <strong>0.0.0.0/0</strong> is whitelisted.</li>
+                      <li>The database password contains special characters that weren't encoded (Fixed in v1.2.1).</li>
+                      <li>The cluster is currently paused or undergoing maintenance.</li>
+                    </ul>
+                  </div>
+                  <button 
+                    onClick={() => window.location.reload()}
+                    className="flex items-center gap-2 text-[10px] font-black text-rose-600 uppercase tracking-widest bg-white px-4 py-2 rounded-full border border-rose-200 hover:bg-rose-100 transition-all"
+                  >
+                    <RefreshCw size={12} /> Retry Handshake
+                  </button>
+                </div>
+              )}
+
               <div className="space-y-6">
                 <div className="flex items-center gap-4 border-b border-slate-50 pb-6">
                    <div className="p-3 bg-slate-900 text-white rounded-2xl">
@@ -82,7 +107,7 @@ const SettingsView: React.FC = () => {
                     <div>
                       <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight">Multi-Device Synchronized</h4>
                       <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                        The database connection is now managed by a secure Node.js bridge. Your login (<strong>wooohan3@gmail.com</strong>) and all portal data are now stored directly in Cluster0 and will be available on any device.
+                        The database connection is managed by a secure Node.js bridge. Your login (<strong>wooohan3@gmail.com</strong>) and all portal data are stored directly in your personal Cluster0.
                       </p>
                     </div>
                   </div>
@@ -106,10 +131,10 @@ const SettingsView: React.FC = () => {
 
                     <button 
                       onClick={() => setShowPurgeConfirm(true)}
-                      className="p-6 bg-red-50 hover:bg-red-100 text-red-600 rounded-[28px] border border-red-100 flex flex-col items-center gap-3 transition-all"
+                      className="p-6 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-[28px] border border-rose-100 flex flex-col items-center gap-3 transition-all"
                     >
                       <AlertTriangle size={24} />
-                      <span className="text-[10px] font-black uppercase tracking-widest">Clear Index</span>
+                      <span className="text-[10px] font-black uppercase tracking-widest">Clear Cache</span>
                     </button>
                   </div>
                 </div>
@@ -121,7 +146,7 @@ const SettingsView: React.FC = () => {
       {showPurgeConfirm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-6 animate-in fade-in duration-200">
           <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-sm p-10 animate-in zoom-in-95 text-center">
-            <div className="w-20 h-20 bg-red-100 text-red-600 rounded-[32px] flex items-center justify-center mx-auto mb-6">
+            <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-[32px] flex items-center justify-center mx-auto mb-6">
               <AlertTriangle size={40} />
             </div>
             <h3 className="text-xl font-black text-slate-900 mb-4">CONFIRM PURGE</h3>
@@ -131,7 +156,7 @@ const SettingsView: React.FC = () => {
             <div className="space-y-3">
               <button 
                 onClick={clearLocalChats}
-                className="w-full py-5 bg-red-600 text-white rounded-2xl font-bold uppercase tracking-widest shadow-lg shadow-red-100"
+                className="w-full py-5 bg-rose-600 text-white rounded-2xl font-bold uppercase tracking-widest shadow-lg shadow-rose-100"
               >
                 Clear Cache
               </button>
