@@ -9,10 +9,10 @@ import PageSettings from './components/Admin/PageSettings';
 import MediaLibrary from './components/Admin/MediaLibrary';
 import SettingsView from './components/Admin/SettingsView';
 import { initFacebookSDK } from './services/facebookService';
-import { Mail, Lock, Loader2, AlertCircle, MessageSquare, Bell, Menu } from 'lucide-react';
+import { Mail, Lock, Loader2, AlertCircle, MessageSquare, Bell, Menu, CloudOff, Cloud } from 'lucide-react';
 
 const LoginPage: React.FC = () => {
-  const { login } = useApp();
+  const { login, dbStatus } = useApp();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -89,6 +89,22 @@ const LoginPage: React.FC = () => {
               {isLoading ? <Loader2 className="animate-spin" size={20} /> : 'Sign In to Portal'}
             </button>
           </form>
+
+          <div className="mt-8 flex items-center justify-center gap-2">
+            {dbStatus === 'unconfigured' ? (
+              <div className="flex items-center gap-1.5 text-[9px] font-black text-amber-500 uppercase tracking-widest px-3 py-1 bg-amber-50 rounded-full border border-amber-100">
+                <CloudOff size={10} /> Local Access Mode
+              </div>
+            ) : dbStatus === 'connected' ? (
+              <div className="flex items-center gap-1.5 text-[9px] font-black text-emerald-500 uppercase tracking-widest px-3 py-1 bg-emerald-50 rounded-full border border-emerald-100">
+                <Cloud size={10} /> Atlas Sync Ready
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest px-3 py-1">
+                <Loader2 size={10} className="animate-spin" /> Verifying Cloud...
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
