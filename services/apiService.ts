@@ -55,6 +55,27 @@ class APIService {
     }
   }
 
+  async testWrite(): Promise<boolean> {
+    try {
+      const result = await this.atlasRequest('updateOne', 'provisioning_logs', {
+        filter: { id: 'heartbeat' },
+        update: { 
+          $set: { 
+            id: 'heartbeat', 
+            timestamp: new Date().toISOString(), 
+            status: 'SUCCESS',
+            message: 'Manual Provisioning Triggered'
+          } 
+        },
+        upsert: true
+      });
+      return result.ok === true;
+    } catch (e) {
+      console.error("Test write failed:", e);
+      return false;
+    }
+  }
+
   async getAll<T>(collection: string, filter: any = {}): Promise<T[]> {
     try {
       const result = await this.atlasRequest('find', collection, { filter });
