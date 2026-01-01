@@ -42,36 +42,19 @@ interface AppContextType {
   addApprovedMedia: (media: ApprovedMedia) => Promise<void>;
   removeApprovedMedia: (id: string) => Promise<void>;
   dashboardStats: DashboardStats;
-  dbStatus: 'connected' | 'syncing' | 'error' | 'initializing';
+  dbStatus: 'connected' | 'syncing' | 'error' | 'initializing' | 'unconfigured';
   clearLocalChats: () => Promise<void>;
   isHistorySynced: boolean;
-  // Added missing functions to the interface to resolve consumption errors in components
   simulateIncomingWebhook: () => Promise<void>;
   generateFakeChats: () => Promise<void>;
+  updateCloudCredentials: (endpoint: string, key: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-const USER_SESSION_KEY = 'messengerflow_session_atlas_v1';
-
-const playNotificationSound = () => {
-  try {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(440, audioCtx.currentTime + 0.1);
-    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.1);
-  } catch (e) {}
-};
+const USER_SESSION_KEY = 'messengerflow_cloud_session';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [dbStatus, setDbStatus] = useState<'connected' | 'syncing' | 'error' | 'initializing'>('initializing');
+  const [dbStatus, setDbStatus] = useState<'connected' | 'syncing' | 'error' | 'initializing' | 'unconfigured'>('initializing');
   const [pages, setPages] = useState<FacebookPage[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [agents, setAgents] = useState<User[]>([]);
@@ -81,92 +64,57 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isHistorySynced, setIsHistorySynced] = useState(false);
 
-  useEffect(() => {
-    const loadFromAtlas = async () => {
-      try {
-        await apiService.init();
-        
-        // Fetch All Collections from MongoDB
-        const [agentsData, pagesData, convsData, msgsData, linksData, mediaData] = await Promise.all([
-          apiService.getAll<User>('agents'),
-          apiService.getAll<FacebookPage>('pages'),
-          apiService.getAll<Conversation>('conversations'),
-          apiService.getAll<Message>('messages'),
-          apiService.getAll<ApprovedLink>('links'),
-          apiService.getAll<ApprovedMedia>('media')
-        ]);
+  const loadDataFromCloud = async () => {
+    if (!apiService.isConfigured()) {
+      setDbStatus('unconfigured');
+      return;
+    }
 
-        // Default setup if cluster is empty
-        if (agentsData.length === 0) {
-          for (const u of MOCK_USERS) await apiService.put('agents', u);
-        }
+    try {
+      setDbStatus('syncing');
+      const isAlive = await apiService.ping();
+      if (!isAlive) throw new Error("Atlas unreachable");
 
-        setAgents(agentsData.length ? agentsData : MOCK_USERS);
-        setPages(pagesData);
-        setConversations(convsData);
-        setMessages(msgsData);
-        setApprovedLinks(linksData);
-        setApprovedMedia(mediaData);
+      const [agentsData, pagesData, convsData, msgsData, linksData, mediaData] = await Promise.all([
+        apiService.getAll<User>('agents'),
+        apiService.getAll<FacebookPage>('pages'),
+        apiService.getAll<Conversation>('conversations'),
+        apiService.getAll<Message>('messages'),
+        apiService.getAll<ApprovedLink>('links'),
+        apiService.getAll<ApprovedMedia>('media')
+      ]);
 
-        const session = localStorage.getItem(USER_SESSION_KEY);
-        if (session) setCurrentUser(JSON.parse(session));
-        
-        setDbStatus('connected');
-      } catch (err) {
-        setDbStatus('error');
+      // Seed if empty
+      if (agentsData.length === 0) {
+        for (const u of MOCK_USERS) await apiService.put('agents', u);
       }
-    };
-    loadFromAtlas();
+
+      setAgents(agentsData.length ? agentsData : MOCK_USERS);
+      setPages(pagesData);
+      setConversations(convsData);
+      setMessages(msgsData);
+      setApprovedLinks(linksData);
+      setApprovedMedia(mediaData);
+
+      const session = localStorage.getItem(USER_SESSION_KEY);
+      if (session) setCurrentUser(JSON.parse(session));
+      
+      setDbStatus('connected');
+    } catch (err) {
+      setDbStatus('error');
+    }
+  };
+
+  useEffect(() => {
+    loadDataFromCloud();
   }, []);
-
-  // Poll Meta for new messages and persist to Atlas
-  useEffect(() => {
-    if (pages.length === 0 || dbStatus !== 'connected') return;
-    
-    const atlasDeltaSync = async () => {
-      let hasNew = false;
-      for (const page of pages) {
-        if (!page.accessToken) continue;
-        try {
-          const metaConvs = await fetchPageConversations(page.id, page.accessToken, 10, true);
-          for (const conv of metaConvs) {
-            const existing = conversations.find(c => c.id === conv.id);
-            if (!existing || existing.lastTimestamp !== conv.lastTimestamp) {
-              await apiService.put('conversations', conv);
-              hasNew = true;
-              if (conv.unreadCount > (existing?.unreadCount || 0)) playNotificationSound();
-            }
-          }
-        } catch (e) {}
-      }
-      if (hasNew) {
-        const all = await apiService.getAll<Conversation>('conversations');
-        setConversations(all);
-      }
-    };
-
-    const interval = setInterval(atlasDeltaSync, 20000); 
-    return () => clearInterval(interval);
-  }, [pages, conversations, dbStatus]);
-
-  const dashboardStats = useMemo(() => {
-    const openChats = conversations.filter(c => c.status === ConversationStatus.OPEN).length;
-    const resolvedToday = conversations.filter(c => c.status === ConversationStatus.RESOLVED).length;
-    return { 
-      openChats, 
-      avgResponseTime: "0m 45s", 
-      resolvedToday, 
-      csat: "99%",
-      chartData: [{ name: 'Mon', conversations: 12 }, { name: 'Tue', conversations: 19 }] 
-    };
-  }, [conversations]);
 
   const value: AppContextType = {
     currentUser, setCurrentUser,
-    pages, 
+    pages,
     addPage: async (p) => { await apiService.put('pages', p); setPages(prev => [...prev, p]); },
     removePage: async (id) => { await apiService.delete('pages', id); setPages(prev => prev.filter(p => p.id !== id)); },
-    updatePage: async (id, u) => { 
+    updatePage: async (id, u) => {
       const updated = pages.map(p => p.id === id ? { ...p, ...u } : p);
       setPages(updated);
       const page = updated.find(p => p.id === id);
@@ -183,7 +131,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       await apiService.delete('conversations', id);
       setConversations(prev => prev.filter(c => c.id !== id));
     },
-    messages, 
+    messages,
     addMessage: async (m) => { await apiService.put('messages', m); setMessages(p => [...p, m]); },
     bulkAddMessages: async (msgs) => {
       for (const m of msgs) await apiService.put('messages', m);
@@ -192,7 +140,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return [...prev, ...msgs.filter(m => !ids.has(m.id))];
       });
     },
-    agents, 
+    agents,
     addAgent: async (a) => { await apiService.put('agents', a); setAgents(p => [...p, a]); },
     removeAgent: async (id) => { await apiService.delete('agents', id); setAgents(p => p.filter(a => a.id !== id)); },
     updateUser: async (id, u) => {
@@ -219,7 +167,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       setDbStatus('syncing');
       for (const page of pages) {
         if (!page.accessToken) continue;
-        const meta = await fetchPageConversations(page.id, page.accessToken, 20, true);
+        const meta = await fetchPageConversations(page.id, page.accessToken, 50, true);
         for (const c of meta) await apiService.put('conversations', c);
       }
       const all = await apiService.getAll<Conversation>('conversations');
@@ -236,18 +184,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     },
     simulateIncomingWebhook: async () => {},
     generateFakeChats: async () => {},
-    approvedLinks, 
+    approvedLinks,
     addApprovedLink: async (l) => { await apiService.put('links', l); setApprovedLinks(p => [...p, l]); },
     removeApprovedLink: async (id) => { await apiService.delete('links', id); setApprovedLinks(p => p.filter(l => l.id !== id)); },
-    approvedMedia, 
+    approvedMedia,
     addApprovedMedia: async (m) => { await apiService.put('media', m); setApprovedMedia(p => [...p, m]); },
     removeApprovedMedia: async (id) => { await apiService.delete('media', id); setApprovedMedia(p => p.filter(m => m.id !== id)); },
-    dashboardStats, dbStatus, clearLocalChats: async () => {
+    dashboardStats: {
+      openChats: conversations.filter(c => c.status === ConversationStatus.OPEN).length,
+      avgResponseTime: "0m 45s",
+      resolvedToday: conversations.filter(c => c.status === ConversationStatus.RESOLVED).length,
+      csat: "99%",
+      chartData: [{ name: 'Mon', conversations: 12 }, { name: 'Tue', conversations: 19 }]
+    },
+    dbStatus,
+    clearLocalChats: async () => {
       await apiService.clearStore('conversations');
       await apiService.clearStore('messages');
       window.location.reload();
     },
-    isHistorySynced
+    isHistorySynced,
+    updateCloudCredentials: async (endpoint, key) => {
+      apiService.setCredentials(endpoint, key);
+      await loadDataFromCloud();
+    }
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
