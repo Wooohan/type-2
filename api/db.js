@@ -2,7 +2,7 @@
 import { MongoClient } from 'mongodb';
 
 // Ensure special characters are encoded: @ -> %40
-const uri = "mongodb+srv://Zayn:Temp%401122@cluster0.orvyxn0.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+const uri = "mongodb+srv://Zayn:Temp1122@cluster0.orvyxn0.mongodb.net/MessengerFlow?retryWrites=true&w=majority&appName=Cluster0";
 
 let cachedClient = null;
 let cachedDb = null;
