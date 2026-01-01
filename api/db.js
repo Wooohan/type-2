@@ -1,97 +1,104 @@
+
 import { MongoClient } from 'mongodb';
 
-// 1. Explicitly added /MessengerFlow to the URI to avoid defaulting to the 'local' database
-const uri = "mongodb+srv://Zayn:Temp1122@cluster0.orvyxn0.mongodb.net/MessengerFlow?retryWrites=true&w=majority&appName=Cluster0";
+/**
+ * MongoDB Atlas Bridge v1.3
+ * Securely handles connections to Cluster0
+ */
+const uri = "mongodb+srv://Zayn:Temp1122@cluster0.orvyxn0.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
-// Global variables to cache the connection in Vercel's serverless environment
+// Global cache for the client to prevent connection exhaustion
 let cachedClient = null;
-let cachedDb = null;
 
-async function connectToDatabase() {
-  // Return cached connection if available to prevent "too many connections" errors on M0 Free Tier
-  if (cachedClient && cachedDb) {
-    return { client: cachedClient, db: cachedDb };
-  }
+async function getClient() {
+  if (cachedClient) return cachedClient;
 
   const client = new MongoClient(uri, {
-    connectTimeoutMS: 15000, 
-    socketTimeoutMS: 45000,
-    maxPoolSize: 1, // Recommended for Free Tier clusters
+    connectTimeoutMS: 15000,
+    serverSelectionTimeoutMS: 15000,
   });
 
   try {
     await client.connect();
-    // 2. Explicitly target 'MessengerFlow'. MongoDB will auto-create this on your first write.
-    const db = client.db('MessengerFlow'); 
-    
     cachedClient = client;
-    cachedDb = db;
-    return { client, db };
+    return client;
   } catch (err) {
-    console.error("MongoDB Connection Failed:", err.message);
+    console.error("Critical Connection Failure:", err.message);
     throw err;
   }
 }
 
 export default async function handler(req, res) {
-  // Only allow POST requests for security and data handling
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  const { action, collection, filter, update, upsert, document } = req.body;
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // dbName is now passed from the frontend for dynamic environment switching
+  const { action, collection, filter, update, upsert, dbName } = req.body;
+  const targetDbName = dbName || 'MessengerFlow';
   
   try {
-    const { db } = await connectToDatabase();
-    
-    // 3. Set a default collection name if none is provided
-    const targetCollection = collection || 'messages';
-    const col = db.collection(targetCollection);
+    const client = await getClient();
+    const db = client.db(targetDbName);
+    const colName = collection || 'system_logs';
+    const col = db.collection(colName);
 
     let result;
     switch (action) {
       case 'ping':
-        // Verifies the cluster is reachable
-        const pingResult = await db.command({ hello: 1 });
-        res.status(200).json({ ok: true, database: 'MessengerFlow', version: pingResult.maxWireVersion });
-        break;
-
-      case 'insertOne':
-        // Used to save a new message
-        result = await col.insertOne(document || {});
-        res.status(200).json({ ok: true, insertedId: result.insertedId });
-        break;
+        await db.command({ ping: 1 });
+        return res.status(200).json({ 
+            ok: true, 
+            cluster: "Cluster0", 
+            database: targetDbName,
+            status: "ONLINE" 
+        });
 
       case 'find':
-        // Used to load all messages
-        result = await col.find(filter || {}).sort({ timestamp: -1 }).toArray();
-        res.status(200).json({ documents: result || [] });
-        break;
+        result = await col.find(filter || {}).toArray();
+        return res.status(200).json({ documents: result });
       
       case 'findOne':
         result = await col.findOne(filter || {});
-        res.status(200).json({ document: result });
-        break;
+        return res.status(200).json({ document: result });
 
       case 'updateOne':
-        // update should be in format: { $set: { key: value } }
-        result = await col.updateOne(filter || {}, update || {}, { upsert: upsert ?? true });
-        res.status(200).json({ ok: true, modifiedCount: result.modifiedCount, upsertedId: result.upsertedId });
-        break;
+        const finalFilter = filter || { id: update?.$set?.id };
+        if (!finalFilter.id && !update?.$set?.id) {
+            throw new Error("Missing Unique ID (Persistence Denied)");
+        }
+        
+        result = await col.updateOne(
+          finalFilter,
+          update,
+          { upsert: upsert ?? true }
+        );
+        return res.status(200).json({ 
+          ok: true, 
+          modifiedCount: result.modifiedCount,
+          upsertedId: result.upsertedId
+        });
 
       case 'deleteOne':
-        result = await col.deleteOne(filter || {});
-        res.status(200).json({ ok: true, deletedCount: result.deletedCount });
-        break;
+        result = await col.deleteOne(filter);
+        return res.status(200).json({ ok: true, deletedCount: result.deletedCount });
+
+      case 'deleteMany':
+        result = await col.deleteMany(filter || {});
+        return res.status(200).json({ ok: true, deletedCount: result.deletedCount });
 
       default:
-        res.status(400).json({ error: 'Invalid action: ' + action });
+        return res.status(400).json({ error: 'Invalid action: ' + action });
     }
   } catch (error) {
-    console.error('Atlas Bridge Failure:', error.message);
-    res.status(500).json({ 
+    console.error(`Atlas Error [${targetDbName}]:`, error.message);
+    return res.status(500).json({ 
       error: error.message,
-      context: "Ensure you are not trying to write to the 'local' or 'admin' databases."
+      code: error.code,
+      suggestion: "Check your database name and ensure IP 0.0.0.0/0 is whitelisted in Atlas."
     });
   }
 }
