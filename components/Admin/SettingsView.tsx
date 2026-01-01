@@ -1,88 +1,57 @@
 
-import React, { useState } from 'react';
-import { Settings, Shield, Globe, Bell, Smartphone, User, Database, CheckCircle2, Save, Trash2, AlertTriangle, X, Loader2, RefreshCw, FlaskConical } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Settings, Shield, Globe, Bell, User, Database, CheckCircle2, Save, Trash2, AlertTriangle, Loader2, RefreshCw, Key, Code, Cloud, ExternalLink } from 'lucide-react';
 import { useApp } from '../../store/AppContext';
 import { UserRole } from '../../types';
 
 const SettingsView: React.FC = () => {
-  const { currentUser, updateUser, dbStatus, clearLocalChats, syncFullHistory, generateFakeChats } = useApp();
+  const { currentUser, dbStatus, clearLocalChats, syncFullHistory, updateCloudCredentials } = useApp();
   const isAdmin = currentUser?.role === UserRole.SUPER_ADMIN;
 
-  const [portalName, setPortalName] = useState('MessengerFlow Portal');
-  const [strictMode, setStrictMode] = useState(true);
-  const [notifEnabled, setNotifEnabled] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isSyncingAll, setIsSyncingAll] = useState(false);
-  const [isGeneratingFake, setIsGeneratingFake] = useState(false);
+  const [atlasEndpoint, setAtlasEndpoint] = useState(localStorage.getItem('atlas_endpoint') || '');
+  const [atlasKey, setAtlasKey] = useState(localStorage.getItem('atlas_api_key') || '');
+  const [isSavingCloud, setIsSavingCloud] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
-  const [isPurging, setIsPurging] = useState(false);
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    await new Promise(r => setTimeout(r, 800));
-    setIsSaving(false);
+  const handleSaveCloud = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingCloud(true);
+    await updateCloudCredentials(atlasEndpoint, atlasKey);
+    setIsSavingCloud(false);
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 3000);
-  };
-
-  const handlePurge = async () => {
-    setIsPurging(true);
-    await clearLocalChats();
-    setIsPurging(false);
-    setShowPurgeConfirm(false);
-  };
-
-  const handleSyncAll = async () => {
-    if (isSyncingAll) return;
-    setIsSyncingAll(true);
-    try {
-      await syncFullHistory();
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 5000);
-    } catch (err: any) {
-      console.error("Full Sync Error:", err);
-      const msg = err.message || "Unknown Meta API Error";
-      alert(`Sync failed for some pages: ${msg}\n\nEnsure your Page Access Tokens are valid and you have requested 'pages_messaging' permissions.`);
-    } finally {
-      setIsSyncingAll(false);
-    }
-  };
-
-  const handleGenerateFake = async () => {
-    if (isGeneratingFake) return;
-    setIsGeneratingFake(true);
-    try {
-      await generateFakeChats();
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
-    } catch (err) {
-      console.error("Fake Chat Gen Error:", err);
-    } finally {
-      setIsGeneratingFake(false);
-    }
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 px-4 md:px-0 pb-10">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-slate-800 tracking-tight">Portal Settings</h2>
-          <p className="text-slate-500 text-sm mt-1">Configure system-wide preferences and security policies.</p>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Portal Configuration</h2>
+          <p className="text-slate-500 text-sm mt-1">Connect your real MongoDB Atlas Cluster0 for multi-device sync.</p>
         </div>
-        <button 
-          onClick={handleSave}
-          disabled={isSaving}
-          className="flex items-center gap-2 px-8 py-3.5 bg-blue-600 text-white rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95"
-        >
-          {isSaving ? <CheckCircle2 className="animate-pulse" size={20} /> : <Save size={20} />}
-          {isSaving ? 'Saving Changes...' : 'Save Configuration'}
-        </button>
       </div>
 
-      {showSuccess && (
-        <div className="p-4 bg-emerald-500 text-white rounded-2xl font-bold text-sm flex items-center gap-3 animate-in slide-in-from-top-4">
-           <CheckCircle2 size={20} /> Operation successful. Changes applied.
+      {dbStatus === 'unconfigured' && (
+        <div className="bg-amber-50 border-2 border-amber-200 p-8 rounded-[40px] animate-shake">
+           <div className="flex gap-6 items-start">
+              <div className="p-4 bg-amber-100 text-amber-600 rounded-2xl">
+                 <AlertTriangle size={32} />
+              </div>
+              <div className="space-y-2">
+                 <h3 className="text-xl font-black text-amber-800">Connection Required</h3>
+                 <p className="text-amber-700 text-sm leading-relaxed">
+                   The portal is currently in offline mode. To sync data across devices and store it in your Atlas cluster, you must enable the <strong>Data API</strong> in your MongoDB Atlas Dashboard and provide the credentials below.
+                 </p>
+                 <a 
+                   href="https://www.mongodb.com/docs/atlas/api/data-api/" 
+                   target="_blank" 
+                   className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-amber-900 hover:underline"
+                 >
+                   Setup Guide <ExternalLink size={12} />
+                 </a>
+              </div>
+           </div>
         </div>
       )}
 
@@ -92,169 +61,141 @@ const SettingsView: React.FC = () => {
               <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mb-2">
                  <User size={24} />
               </div>
-              <h4 className="font-bold text-slate-800">Your Account</h4>
-              <p className="text-xs text-slate-400">Logged in as {currentUser?.name}</p>
-              <div className="pt-4">
-                 <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${isAdmin ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                    {currentUser?.role}
-                 </span>
-              </div>
+              <h4 className="font-bold text-slate-800">Zayn Admin</h4>
+              <p className="text-xs text-slate-400">Portal Owner</p>
            </div>
 
-           <div className="bg-slate-900 p-6 rounded-[32px] text-white space-y-4 shadow-xl shadow-slate-200">
+           <div className="bg-slate-900 p-8 rounded-[40px] text-white space-y-4 shadow-xl">
               <div className="flex items-center gap-3">
                  <Database size={20} className="text-blue-400" />
-                 <h4 className="font-bold text-sm uppercase tracking-widest">System Health</h4>
+                 <h4 className="font-black text-[10px] uppercase tracking-widest text-slate-400">Atlas Engine</h4>
               </div>
-              <div className="space-y-2">
-                 <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase">
-                    <span>Database Status</span>
-                    <span className="text-emerald-400">{dbStatus}</span>
+              <div className="space-y-3">
+                 <div className="flex justify-between text-[10px] font-black uppercase">
+                    <span className="text-slate-500">Status</span>
+                    <span className={dbStatus === 'connected' ? 'text-emerald-400' : 'text-red-400'}>
+                      {dbStatus.toUpperCase()}
+                    </span>
                  </div>
-                 <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                    <div className="bg-emerald-500 h-full w-[100%]" />
+                 <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                    <div className={`h-full transition-all duration-1000 ${dbStatus === 'connected' ? 'bg-emerald-500 w-full' : 'bg-red-500 w-1/4'}`} />
                  </div>
               </div>
-              <p className="text-[10px] text-slate-500 leading-relaxed italic">All records are stored locally in Encrypted IndexedDB partitions.</p>
+              <p className="text-[10px] text-slate-500 font-bold leading-tight">
+                Region: AWS / us-east-1<br/>
+                Cluster: Cluster0
+              </p>
            </div>
         </div>
 
         <div className="md:col-span-2 space-y-6">
-           <div className="bg-white p-6 md:p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-8">
-              <div className="space-y-6">
-                <div className="flex items-center gap-3 border-b border-slate-50 pb-4">
-                   <Globe size={20} className="text-slate-400" />
-                   <h3 className="font-bold text-slate-800">General Branding</h3>
+           <div className="bg-white p-8 md:p-10 rounded-[48px] border border-slate-100 shadow-sm">
+              <form onSubmit={handleSaveCloud} className="space-y-8">
+                <div className="flex items-center gap-4 border-b border-slate-50 pb-6">
+                   <div className="p-3 bg-blue-600 text-white rounded-2xl">
+                      <Cloud size={24} />
+                   </div>
+                   <h3 className="text-2xl font-black text-slate-900 tracking-tight">Cloud Credentials</h3>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Portal Interface Name</label>
-                  <input 
-                    type="text" 
-                    value={portalName}
-                    style={{ fontSize: '16px' }}
-                    onChange={(e) => setPortalName(e.target.value)}
-                    className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-500 transition-all font-bold text-slate-700"
-                  />
-                </div>
-              </div>
 
-              {isAdmin && (
                 <div className="space-y-6">
-                  <div className="flex items-center gap-3 border-b border-slate-50 pb-4">
-                    <RefreshCw size={20} className="text-blue-500" />
-                    <h3 className="font-bold text-slate-800">Advanced Tools</h3>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data API Endpoint URL</label>
+                    <input 
+                      type="url"
+                      required
+                      placeholder="https://data.mongodb-api.com/app/data-portal-xxxx/endpoint/data/v1"
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-50 transition-all font-mono text-xs"
+                      value={atlasEndpoint}
+                      onChange={e => setAtlasEndpoint(e.target.value)}
+                    />
                   </div>
-                  <div className="space-y-4">
-                    <div className="p-6 bg-blue-50 rounded-3xl border border-blue-100 flex flex-col md:flex-row items-center justify-between gap-4">
-                      <div>
-                        <h4 className="text-sm font-bold text-blue-800">Sync All History</h4>
-                        <p className="text-[10px] text-blue-600 mt-1 uppercase font-black">Fetches 100+ chats from Meta</p>
-                      </div>
-                      <button 
-                        onClick={handleSyncAll}
-                        disabled={isSyncingAll}
-                        className="w-full md:w-auto px-6 py-3 bg-blue-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-blue-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-100 disabled:opacity-50"
-                      >
-                        {isSyncingAll ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
-                        {isSyncingAll ? 'Processing...' : 'Start Full Sync'}
-                      </button>
-                    </div>
 
-                    <div className="p-6 bg-slate-50 rounded-3xl border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-4">
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-800">Testing Interface</h4>
-                        <p className="text-[10px] text-slate-500 mt-1 uppercase font-black">Generate mock conversation data</p>
-                      </div>
-                      <button 
-                        onClick={handleGenerateFake}
-                        disabled={isGeneratingFake}
-                        className="w-full md:w-auto px-6 py-3 bg-slate-800 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-900 transition-all flex items-center justify-center gap-2 shadow-lg shadow-slate-100"
-                      >
-                        {isGeneratingFake ? <Loader2 className="animate-spin" size={16} /> : <FlaskConical size={16} />}
-                        {isGeneratingFake ? 'Generating...' : 'Generate 2 Fake Chats'}
-                      </button>
-                    </div>
-
-                    <div className="p-6 bg-red-50 rounded-3xl border border-red-100 space-y-4">
-                      <div>
-                        <h4 className="text-sm font-bold text-red-800">Purge Local Message Database</h4>
-                        <p className="text-xs text-red-600 mt-1 leading-relaxed">This will delete all conversation and message logs from this portal. Action is local only.</p>
-                      </div>
-                      <button 
-                        onClick={() => setShowPurgeConfirm(true)}
-                        className="w-full md:w-auto px-6 py-3 bg-red-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-red-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-100"
-                      >
-                        <Trash2 size={16} /> Clear All Chats
-                      </button>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Atlas API Key</label>
+                    <div className="relative group">
+                      <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                      <input 
+                        type="password"
+                        required
+                        placeholder="Your Data API Key"
+                        className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-50 transition-all font-mono text-xs"
+                        value={atlasKey}
+                        onChange={e => setAtlasKey(e.target.value)}
+                      />
                     </div>
                   </div>
                 </div>
-              )}
 
-              <div className="space-y-6">
-                <div className="flex items-center gap-3 border-b border-slate-50 pb-4">
-                   <Shield size={20} className="text-slate-400" />
-                   <h3 className="font-bold text-slate-800">Security & Compliance</h3>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                   <div>
-                      <h4 className="text-sm font-bold text-slate-800">Strict Link Enforcement</h4>
-                      <p className="text-[10px] text-slate-500 uppercase tracking-tight font-bold mt-0.5">Blocks non-library URLs in all chats</p>
-                   </div>
-                   <button 
-                    onClick={() => setStrictMode(!strictMode)}
-                    className={`w-14 h-7 rounded-full transition-all flex items-center px-1 ${strictMode ? 'bg-blue-600' : 'bg-slate-300'}`}
-                   >
-                      <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-all ${strictMode ? 'translate-x-7' : 'translate-x-0'}`} />
-                   </button>
-                </div>
-              </div>
+                <button 
+                  type="submit"
+                  disabled={isSavingCloud}
+                  className="w-full py-5 bg-blue-600 text-white rounded-[24px] font-black uppercase tracking-widest shadow-xl shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95 flex items-center justify-center gap-3"
+                >
+                  {isSavingCloud ? <Loader2 className="animate-spin" /> : <Save size={20} />}
+                  Connect to Cluster0
+                </button>
 
-              <div className="space-y-6">
-                <div className="flex items-center gap-3 border-b border-slate-50 pb-4">
-                   <Bell size={20} className="text-slate-400" />
-                   <h3 className="font-bold text-slate-800">Notifications</h3>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                   <div>
-                      <h4 className="text-sm font-bold text-slate-800">Desktop Push Notifications</h4>
-                      <p className="text-[10px] text-slate-500 uppercase tracking-tight font-bold mt-0.5">Notify agents on incoming Meta messages</p>
-                   </div>
-                   <button 
-                    onClick={() => setNotifEnabled(!notifEnabled)}
-                    className={`w-14 h-7 rounded-full transition-all flex items-center px-1 ${notifEnabled ? 'bg-blue-600' : 'bg-slate-300'}`}
-                   >
-                      <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-all ${notifEnabled ? 'translate-x-7' : 'translate-x-0'}`} />
-                   </button>
-                </div>
-              </div>
+                {showSuccess && (
+                  <div className="flex items-center justify-center gap-2 text-emerald-600 font-bold text-sm animate-in fade-in slide-in-from-bottom-2">
+                    <CheckCircle2 size={16} /> Connection Updated
+                  </div>
+                )}
+              </form>
            </div>
+
+           {isAdmin && dbStatus === 'connected' && (
+             <div className="bg-white p-8 rounded-[40px] border border-slate-100 shadow-sm space-y-6">
+                <div className="flex items-center gap-3 border-b border-slate-50 pb-4">
+                  <RefreshCw size={20} className="text-emerald-500" />
+                  <h3 className="font-bold text-slate-800">Cloud Sync Tools</h3>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button 
+                    onClick={syncFullHistory}
+                    className="p-6 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-3xl border border-blue-100 flex flex-col items-center gap-3 transition-all"
+                  >
+                    <RefreshCw size={24} />
+                    <div className="text-center">
+                      <h4 className="text-xs font-black uppercase tracking-tight">Pull Remote History</h4>
+                    </div>
+                  </button>
+
+                  <button 
+                    onClick={() => setShowPurgeConfirm(true)}
+                    className="p-6 bg-red-50 hover:bg-red-100 text-red-600 rounded-3xl border border-red-100 flex flex-col items-center gap-3 transition-all"
+                  >
+                    <Trash2 size={24} />
+                    <div className="text-center">
+                      <h4 className="text-xs font-black uppercase tracking-tight">Purge Local Cache</h4>
+                    </div>
+                  </button>
+                </div>
+             </div>
+           )}
         </div>
       </div>
 
-      {/* Purge Confirmation Modal */}
       {showPurgeConfirm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-6 animate-in fade-in duration-200">
-          <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-sm p-10 animate-in zoom-in-95 duration-200 text-center">
+          <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-sm p-10 animate-in zoom-in-95 text-center">
             <div className="w-20 h-20 bg-red-100 text-red-600 rounded-[32px] flex items-center justify-center mx-auto mb-6">
               <AlertTriangle size={40} />
             </div>
-            <h3 className="text-2xl font-black text-slate-800 tracking-tight uppercase mb-4">Are you sure?</h3>
-            <p className="text-slate-500 text-sm leading-relaxed mb-8">
-              This will permanently delete <span className="font-bold text-slate-900">all local chat history</span> from this portal. You will need to re-sync with Meta to see messages again.
+            <h3 className="text-xl font-black text-slate-900 mb-4">CONFIRM PURGE</h3>
+            <p className="text-slate-500 text-sm mb-8 leading-relaxed">
+              This will clear the frontend cache. Data remains safe in your <span className="font-bold">Atlas Cluster0</span>.
             </p>
             <div className="space-y-3">
               <button 
-                onClick={handlePurge}
-                disabled={isPurging}
-                className="w-full py-5 bg-red-600 text-white rounded-2xl font-bold uppercase tracking-widest hover:bg-red-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-100 active:scale-95"
+                onClick={clearLocalChats}
+                className="w-full py-5 bg-red-600 text-white rounded-2xl font-bold uppercase tracking-widest shadow-lg shadow-red-100"
               >
-                {isPurging ? <Loader2 className="animate-spin" size={20} /> : <Trash2 size={20} />}
-                {isPurging ? 'Purging...' : 'Yes, Delete Everything'}
+                Clear Cache
               </button>
               <button 
                 onClick={() => setShowPurgeConfirm(false)}
-                className="w-full py-4 bg-slate-50 text-slate-400 rounded-2xl font-bold uppercase tracking-widest hover:bg-slate-100 transition-all active:scale-95"
+                className="w-full py-4 text-slate-400 font-bold uppercase text-xs"
               >
                 Cancel
               </button>
