@@ -2,72 +2,43 @@
 import { User, FacebookPage, Conversation, Message, ApprovedLink, ApprovedMedia } from '../types';
 
 /**
- * MongoDB Atlas Data API Client
- * This service communicates directly with the Atlas Cloud.
- * To use this, you must enable the "Data API" in your MongoDB Atlas Dashboard.
+ * API Service
+ * Now routes through internal /api/db serverless bridge 
+ * using the official MongoDB Node.js Driver.
  */
 
 class APIService {
-  private endpoint: string = '';
-  private apiKey: string = '';
-  private cluster: string = 'Cluster0';
-  private database: string = 'MessengerFlow';
-
-  constructor() {
-    // Load credentials from storage if they were previously saved in the Settings UI
-    this.endpoint = localStorage.getItem('atlas_endpoint') || '';
-    this.apiKey = localStorage.getItem('atlas_api_key') || '';
-  }
-
-  setCredentials(endpoint: string, apiKey: string) {
-    this.endpoint = endpoint.replace(/\/$/, ""); // Remove trailing slash
-    this.apiKey = apiKey;
-    localStorage.setItem('atlas_endpoint', this.endpoint);
-    localStorage.setItem('atlas_api_key', this.apiKey);
-  }
-
-  isConfigured(): boolean {
-    return this.endpoint !== '' && this.apiKey !== '';
-  }
+  private apiPath: string = '/api/db';
 
   /**
-   * Performs a real HTTPS request to the MongoDB Atlas Data API.
+   * Performs a request to the internal backend bridge.
    */
   private async atlasRequest(action: string, collection: string, body: any) {
-    if (!this.isConfigured()) {
-      throw new Error("Atlas Data API not configured. Please visit Settings.");
-    }
-
-    const url = `${this.endpoint}/action/${action}`;
-    
-    const response = await fetch(url, {
+    const response = await fetch(this.apiPath, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'api-key': this.apiKey,
       },
       body: JSON.stringify({
-        dataSource: this.cluster,
-        database: this.database,
-        collection: collection,
+        action,
+        collection,
         ...body
       })
     });
 
     const result = await response.json();
     if (!response.ok) {
-      throw new Error(result.error || `Atlas Error: ${response.statusText}`);
+      throw new Error(result.error || `Internal DB Error: ${response.statusText}`);
     }
     return result;
   }
 
   async ping(): Promise<boolean> {
     try {
-      // Try to find one agent to verify connection
-      await this.atlasRequest('findOne', 'agents', { filter: {} });
-      return true;
+      const res = await this.atlasRequest('ping', 'agents', {});
+      return res.ok === true;
     } catch (e) {
-      console.error("Atlas Ping Failed:", e);
+      console.error("Atlas Driver Connection Failed:", e);
       return false;
     }
   }
@@ -92,6 +63,18 @@ class APIService {
 
   async clearStore(collection: string): Promise<void> {
     await this.atlasRequest('deleteMany', collection, { filter: {} });
+  }
+
+  // Fix for error in AppContext.tsx: Added setCredentials method for interface compatibility
+  setCredentials(endpoint: string, key: string): void {
+    // In this implementation, the bridge endpoint is static (/api/db) 
+    // and credentials are securely managed server-side.
+    console.debug('Cloud configuration requested, using internal driver bridge.');
+  }
+
+  // Not strictly needed for logic, but keeping for compatibility
+  isConfigured(): boolean {
+    return true; 
   }
 }
 
