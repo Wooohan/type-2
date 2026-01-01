@@ -45,6 +45,7 @@ interface AppContextType {
   dbStatus: 'connected' | 'syncing' | 'error' | 'initializing' | 'unconfigured';
   dbName: string;
   updateDbName: (name: string) => Promise<void>;
+  provisionDatabase: () => Promise<boolean>;
   clearLocalChats: () => Promise<void>;
   isHistorySynced: boolean;
   simulateIncomingWebhook: () => Promise<void>;
@@ -219,6 +220,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       apiService.setDatabase(name);
       setDbName(name);
       await loadDataFromCloud();
+    },
+    provisionDatabase: async () => {
+      setDbStatus('syncing');
+      const testOk = await apiService.testWrite();
+      if (testOk) {
+        await apiService.put('agents', MASTER_ADMIN);
+        setDbStatus('connected');
+        return true;
+      }
+      setDbStatus('error');
+      return false;
     },
     clearLocalChats: async () => {
       await apiService.clearStore('conversations');
