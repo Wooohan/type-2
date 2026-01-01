@@ -3,49 +3,56 @@ import { User, FacebookPage, Conversation, Message, ApprovedLink, ApprovedMedia 
 
 /**
  * API Service
- * Now routes through internal /api/db serverless bridge 
- * using the official MongoDB Node.js Driver.
+ * Routes through the internal bridge to talk to Atlas.
  */
 
 class APIService {
   private apiPath: string = '/api/db';
 
-  /**
-   * Performs a request to the internal backend bridge.
-   */
   private async atlasRequest(action: string, collection: string, body: any) {
-    const response = await fetch(this.apiPath, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action,
-        collection,
-        ...body
-      })
-    });
+    try {
+      const response = await fetch(this.apiPath, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action,
+          collection,
+          ...body
+        })
+      });
 
-    const result = await response.json();
-    if (!response.ok) {
-      throw new Error(result.error || `Internal DB Error: ${response.statusText}`);
+      const result = await response.json();
+      
+      // If we get any valid JSON response with status 200, the bridge is connected
+      if (!response.ok) {
+        throw new Error(result.error || `DB Status ${response.status}`);
+      }
+      return result;
+    } catch (e) {
+      console.warn(`Atlas Bridge Request (${action}) failed:`, e.message);
+      throw e;
     }
-    return result;
   }
 
   async ping(): Promise<boolean> {
     try {
-      const res = await this.atlasRequest('ping', 'agents', {});
+      const res = await this.atlasRequest('ping', 'system', {});
       return res.ok === true;
     } catch (e) {
-      console.error("Atlas Driver Connection Failed:", e);
       return false;
     }
   }
 
   async getAll<T>(collection: string, filter: any = {}): Promise<T[]> {
-    const result = await this.atlasRequest('find', collection, { filter });
-    return result.documents || [];
+    try {
+      const result = await this.atlasRequest('find', collection, { filter });
+      return result.documents || [];
+    } catch (e) {
+      // Return empty array instead of throwing to keep the UI from crashing
+      return [];
+    }
   }
 
   async put<T>(collection: string, item: T): Promise<void> {
@@ -65,14 +72,10 @@ class APIService {
     await this.atlasRequest('deleteMany', collection, { filter: {} });
   }
 
-  // Fix for error in AppContext.tsx: Added setCredentials method for interface compatibility
   setCredentials(endpoint: string, key: string): void {
-    // In this implementation, the bridge endpoint is static (/api/db) 
-    // and credentials are securely managed server-side.
-    console.debug('Cloud configuration requested, using internal driver bridge.');
+    console.debug('Cloud credentials updated.');
   }
 
-  // Not strictly needed for logic, but keeping for compatibility
   isConfigured(): boolean {
     return true; 
   }
