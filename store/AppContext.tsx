@@ -51,13 +51,13 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
-const USER_SESSION_KEY = 'messengerflow_cloud_session';
+const USER_SESSION_KEY = 'messengerflow_cloud_session_v2';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [dbStatus, setDbStatus] = useState<'connected' | 'syncing' | 'error' | 'initializing' | 'unconfigured'>('initializing');
   const [pages, setPages] = useState<FacebookPage[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [agents, setAgents] = useState<User[]>([]);
+  const [agents, setAgents] = useState<User[]>(MOCK_USERS); // Default to mocks
   const [messages, setMessages] = useState<Message[]>([]);
   const [approvedLinks, setApprovedLinks] = useState<ApprovedLink[]>([]);
   const [approvedMedia, setApprovedMedia] = useState<ApprovedMedia[]>([]);
@@ -67,6 +67,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const loadDataFromCloud = async () => {
     if (!apiService.isConfigured()) {
       setDbStatus('unconfigured');
+      // Load session even if unconfigured
+      const session = localStorage.getItem(USER_SESSION_KEY);
+      if (session) setCurrentUser(JSON.parse(session));
       return;
     }
 
@@ -84,12 +87,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         apiService.getAll<ApprovedMedia>('media')
       ]);
 
-      // Seed if empty
-      if (agentsData.length === 0) {
-        for (const u of MOCK_USERS) await apiService.put('agents', u);
-      }
-
-      setAgents(agentsData.length ? agentsData : MOCK_USERS);
+      if (agentsData.length > 0) setAgents(agentsData);
       setPages(pagesData);
       setConversations(convsData);
       setMessages(msgsData);
@@ -101,7 +99,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       
       setDbStatus('connected');
     } catch (err) {
+      console.error("Cloud hydration failed:", err);
       setDbStatus('error');
+      // Fallback: Still try to load session from local
+      const session = localStorage.getItem(USER_SESSION_KEY);
+      if (session) setCurrentUser(JSON.parse(session));
     }
   };
 
@@ -150,11 +152,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (agent) await apiService.put('agents', agent);
     },
     login: async (e, p) => {
-      const remoteAgents = await apiService.getAll<User>('agents');
-      const user = remoteAgents.find(u => u.email === e && u.password === p);
-      if (user) {
-        setCurrentUser(user);
-        localStorage.setItem(USER_SESSION_KEY, JSON.stringify(user));
+      // 1. Try Remote Login if configured
+      if (apiService.isConfigured()) {
+        try {
+          const remoteAgents = await apiService.getAll<User>('agents');
+          const remoteUser = remoteAgents.find(u => u.email === e && u.password === p);
+          if (remoteUser) {
+            setCurrentUser(remoteUser);
+            localStorage.setItem(USER_SESSION_KEY, JSON.stringify(remoteUser));
+            return true;
+          }
+        } catch (err) {
+          console.warn("Remote login check failed, using local fallback");
+        }
+      }
+
+      // 2. Local Fallback (The user can ALWAYS login with the hardcoded admin)
+      const localUser = MOCK_USERS.find(u => u.email === e && u.password === p);
+      if (localUser) {
+        setCurrentUser(localUser);
+        localStorage.setItem(USER_SESSION_KEY, JSON.stringify(localUser));
         return true;
       }
       return false;
