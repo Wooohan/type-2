@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useState, ReactNode, useEffect, useMemo } from 'react';
 import { User, UserRole, FacebookPage, Conversation, Message, ConversationStatus, ApprovedLink, ApprovedMedia } from '../types';
-import { MOCK_USERS } from '../constants';
+import { MASTER_ADMIN, MOCK_USERS } from '../constants';
 import { apiService } from '../services/apiService';
 import { fetchPageConversations, verifyPageAccessToken } from '../services/facebookService';
 
@@ -57,7 +57,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [dbStatus, setDbStatus] = useState<'connected' | 'syncing' | 'error' | 'initializing' | 'unconfigured'>('initializing');
   const [pages, setPages] = useState<FacebookPage[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [agents, setAgents] = useState<User[]>(MOCK_USERS); // Default to mocks
+  const [agents, setAgents] = useState<User[]>(MOCK_USERS);
   const [messages, setMessages] = useState<Message[]>([]);
   const [approvedLinks, setApprovedLinks] = useState<ApprovedLink[]>([]);
   const [approvedMedia, setApprovedMedia] = useState<ApprovedMedia[]>([]);
@@ -65,20 +65,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isHistorySynced, setIsHistorySynced] = useState(false);
 
   const loadDataFromCloud = async () => {
-    if (!apiService.isConfigured()) {
-      setDbStatus('unconfigured');
-      // Load session even if unconfigured
-      const session = localStorage.getItem(USER_SESSION_KEY);
-      if (session) setCurrentUser(JSON.parse(session));
-      return;
-    }
-
+    setDbStatus('syncing');
+    
+    // Attempt to load everything in parallel. 
+    // If we get any data back, we know we are connected.
     try {
-      setDbStatus('syncing');
-      const isAlive = await apiService.ping();
-      if (!isAlive) throw new Error("Atlas unreachable");
-
-      const [agentsData, pagesData, convsData, msgsData, linksData, mediaData] = await Promise.all([
+      const results = await Promise.allSettled([
         apiService.getAll<User>('agents'),
         apiService.getAll<FacebookPage>('pages'),
         apiService.getAll<Conversation>('conversations'),
@@ -87,21 +79,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         apiService.getAll<ApprovedMedia>('media')
       ]);
 
-      if (agentsData.length > 0) setAgents(agentsData);
-      setPages(pagesData);
-      setConversations(convsData);
-      setMessages(msgsData);
-      setApprovedLinks(linksData);
-      setApprovedMedia(mediaData);
+      const success = results.some(r => r.status === 'fulfilled');
 
+      if (success) {
+        if (results[0].status === 'fulfilled' && results[0].value.length > 0) setAgents(results[0].value);
+        if (results[1].status === 'fulfilled') setPages(results[1].value);
+        if (results[2].status === 'fulfilled') setConversations(results[2].value);
+        if (results[3].status === 'fulfilled') setMessages(results[3].value);
+        if (results[4].status === 'fulfilled') setApprovedLinks(results[4].value);
+        if (results[5].status === 'fulfilled') setApprovedMedia(results[5].value);
+        
+        setDbStatus('connected');
+      } else {
+        // If everything fails, try a simple ping check
+        const isAlive = await apiService.ping();
+        setDbStatus(isAlive ? 'connected' : 'error');
+      }
+
+      // Restore session
       const session = localStorage.getItem(USER_SESSION_KEY);
       if (session) setCurrentUser(JSON.parse(session));
-      
-      setDbStatus('connected');
+
     } catch (err) {
-      console.error("Cloud hydration failed:", err);
+      console.error("Critical connection failure:", err);
       setDbStatus('error');
-      // Fallback: Still try to load session from local
       const session = localStorage.getItem(USER_SESSION_KEY);
       if (session) setCurrentUser(JSON.parse(session));
     }
@@ -152,22 +153,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (agent) await apiService.put('agents', agent);
     },
     login: async (e, p) => {
-      // 1. Try Remote Login if configured
-      if (apiService.isConfigured()) {
-        try {
-          const remoteAgents = await apiService.getAll<User>('agents');
-          const remoteUser = remoteAgents.find(u => u.email === e && u.password === p);
-          if (remoteUser) {
-            setCurrentUser(remoteUser);
-            localStorage.setItem(USER_SESSION_KEY, JSON.stringify(remoteUser));
-            return true;
-          }
-        } catch (err) {
-          console.warn("Remote login check failed, using local fallback");
-        }
+      // MASTER ADMIN ALWAYS WORKS REGARDLESS OF DB
+      if (e === MASTER_ADMIN.email && p === MASTER_ADMIN.password) {
+        setCurrentUser(MASTER_ADMIN);
+        localStorage.setItem(USER_SESSION_KEY, JSON.stringify(MASTER_ADMIN));
+        return true;
       }
 
-      // 2. Local Fallback (The user can ALWAYS login with the hardcoded admin)
+      // Check DB if connected
+      try {
+        const remoteAgents = await apiService.getAll<User>('agents');
+        const remoteUser = remoteAgents.find(u => u.email === e && u.password === p);
+        if (remoteUser) {
+          setCurrentUser(remoteUser);
+          localStorage.setItem(USER_SESSION_KEY, JSON.stringify(remoteUser));
+          return true;
+        }
+      } catch (err) {
+        console.warn("DB login check skipped or failed");
+      }
+
+      // Fallback to local mocks
       const localUser = MOCK_USERS.find(u => u.email === e && u.password === p);
       if (localUser) {
         setCurrentUser(localUser);
@@ -212,7 +218,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       avgResponseTime: "0m 45s",
       resolvedToday: conversations.filter(c => c.status === ConversationStatus.RESOLVED).length,
       csat: "99%",
-      chartData: [{ name: 'Mon', conversations: 12 }, { name: 'Tue', conversations: 19 }]
+      chartData: [
+        { name: 'Mon', conversations: Math.floor(Math.random() * 20) },
+        { name: 'Tue', conversations: Math.floor(Math.random() * 25) },
+        { name: 'Wed', conversations: Math.floor(Math.random() * 30) },
+        { name: 'Thu', conversations: Math.floor(Math.random() * 22) },
+        { name: 'Fri', conversations: Math.floor(Math.random() * 40) }
+      ]
     },
     dbStatus,
     clearLocalChats: async () => {
