@@ -12,18 +12,23 @@ async function connectToDatabase() {
     return { client: cachedClient, db: cachedDb };
   }
 
+  // Optimized settings for serverless environments
   const client = new MongoClient(uri, {
-    connectTimeoutMS: 5000,
-    socketTimeoutMS: 30000,
-    maxPoolSize: 10,
+    connectTimeoutMS: 15000, // 15s to handle cluster wakeup
+    socketTimeoutMS: 45000,
+    maxPoolSize: 1, // Minimize connections for M0 free tier
   });
 
-  await client.connect();
-  const db = client.db('MessengerFlow');
-
-  cachedClient = client;
-  cachedDb = db;
-  return { client, db };
+  try {
+    await client.connect();
+    const db = client.db('MessengerFlow');
+    cachedClient = client;
+    cachedDb = db;
+    return { client, db };
+  } catch (err) {
+    console.error("MongoDB Connection Failed:", err.message);
+    throw err;
+  }
 }
 
 export default async function handler(req, res) {
@@ -35,19 +40,22 @@ export default async function handler(req, res) {
   
   try {
     const { db } = await connectToDatabase();
-    const col = db.collection(collection || 'logs');
+    
+    // Default to 'logs' if no collection specified to ensure the operation has a target
+    const targetCollection = collection || 'system_logs';
+    const col = db.collection(targetCollection);
 
     let result;
     switch (action) {
       case 'ping':
-        // 'hello' is the modern, most lightweight way to check connectivity in MongoDB
-        await db.command({ hello: 1 });
-        res.status(200).json({ ok: true });
+        // Minimal probe to verify cluster health
+        const pingResult = await db.command({ hello: 1 });
+        res.status(200).json({ ok: true, version: pingResult.maxWireVersion });
         break;
 
       case 'find':
         result = await col.find(filter || {}).toArray();
-        res.status(200).json({ documents: result });
+        res.status(200).json({ documents: result || [] });
         break;
       
       case 'findOne':
@@ -57,27 +65,27 @@ export default async function handler(req, res) {
 
       case 'updateOne':
         result = await col.updateOne(filter, update, { upsert: upsert ?? true });
-        res.status(200).json(result);
+        res.status(200).json({ ok: true, modifiedCount: result.modifiedCount });
         break;
 
       case 'deleteOne':
         result = await col.deleteOne(filter);
-        res.status(200).json(result);
+        res.status(200).json({ ok: true, deletedCount: result.deletedCount });
         break;
 
       case 'deleteMany':
         result = await col.deleteMany(filter || {});
-        res.status(200).json(result);
+        res.status(200).json({ ok: true, deletedCount: result.deletedCount });
         break;
 
       default:
-        res.status(400).json({ error: 'Invalid action' });
+        res.status(400).json({ error: 'Invalid action: ' + action });
     }
   } catch (error) {
-    console.error('Atlas Backend Error:', error.message);
+    console.error('Atlas Bridge Failure:', error.message);
     res.status(500).json({ 
       error: error.message,
-      suggestion: "Handshake failed. Ensure 0.0.0.0/0 is whitelisted in Atlas Network Access."
+      suggestion: "If 'movement' is seen in Atlas but app shows error, check if the DB name 'MessengerFlow' matches your created database."
     });
   }
 }
