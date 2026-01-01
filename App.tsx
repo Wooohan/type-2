@@ -91,7 +91,8 @@ const LoginPage: React.FC = () => {
           </form>
 
           <div className="mt-8 flex items-center justify-center gap-2">
-            {dbStatus === 'unconfigured' ? (
+            {/* Fixed: Comparison with 'unconfigured' was invalid as it's not in the dbStatus union type. Used 'error' instead. */}
+            {dbStatus === 'error' ? (
               <div className="flex items-center gap-1.5 text-[9px] font-black text-amber-500 uppercase tracking-widest px-3 py-1 bg-amber-50 rounded-full border border-amber-100">
                 <CloudOff size={10} /> Local Access Mode
               </div>
