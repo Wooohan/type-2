@@ -69,10 +69,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const loadDataFromCloud = async () => {
     setDbStatus('syncing');
-    
     try {
       const isAlive = await apiService.ping();
-      
       if (!isAlive) {
         setDbStatus('error');
       } else {
@@ -91,13 +89,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (msgsData) setMessages(msgsData);
         if (linksData) setApprovedLinks(linksData);
         if (mediaData) setApprovedMedia(mediaData);
-        
         setDbStatus('connected');
       }
-
       const session = localStorage.getItem(USER_SESSION_KEY);
       if (session) setCurrentUser(JSON.parse(session));
-
     } catch (err) {
       console.error("Cloud error during load:", err);
       setDbStatus('error');
