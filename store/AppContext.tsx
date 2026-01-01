@@ -43,6 +43,8 @@ interface AppContextType {
   removeApprovedMedia: (id: string) => Promise<void>;
   dashboardStats: DashboardStats;
   dbStatus: 'connected' | 'syncing' | 'error' | 'initializing' | 'unconfigured';
+  dbName: string;
+  updateDbName: (name: string) => Promise<void>;
   clearLocalChats: () => Promise<void>;
   isHistorySynced: boolean;
   simulateIncomingWebhook: () => Promise<void>;
@@ -55,6 +57,7 @@ const USER_SESSION_KEY = 'messengerflow_cloud_session_v3';
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [dbStatus, setDbStatus] = useState<'connected' | 'syncing' | 'error' | 'initializing' | 'unconfigured'>('initializing');
+  const [dbName, setDbName] = useState(apiService.getDatabaseName());
   const [pages, setPages] = useState<FacebookPage[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [agents, setAgents] = useState<User[]>(MOCK_USERS);
@@ -68,41 +71,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setDbStatus('syncing');
     
     try {
-      // Step 1: Verification Ping - If this succeeds, the bridge is alive
       const isAlive = await apiService.ping();
       
       if (!isAlive) {
         setDbStatus('error');
       } else {
-        // Step 2: Fetch data, but don't hang if database is empty
         const [agentsData, pagesData, convsData, msgsData, linksData, mediaData] = await Promise.all([
-          apiService.getAll<User>('agents').catch(() => []),
-          apiService.getAll<FacebookPage>('pages').catch(() => []),
-          apiService.getAll<Conversation>('conversations').catch(() => []),
-          apiService.getAll<Message>('messages').catch(() => []),
-          apiService.getAll<ApprovedLink>('links').catch(() => []),
-          apiService.getAll<ApprovedMedia>('media').catch(() => [])
+          apiService.getAll<User>('agents'),
+          apiService.getAll<FacebookPage>('pages'),
+          apiService.getAll<Conversation>('conversations'),
+          apiService.getAll<Message>('messages'),
+          apiService.getAll<ApprovedLink>('links'),
+          apiService.getAll<ApprovedMedia>('media')
         ]);
 
-        if (agentsData.length > 0) setAgents(agentsData);
-        setPages(pagesData);
-        setConversations(convsData);
-        setMessages(msgsData);
-        setApprovedLinks(linksData);
-        setApprovedMedia(mediaData);
+        if (agentsData && agentsData.length > 0) setAgents(agentsData);
+        if (pagesData) setPages(pagesData);
+        if (convsData) setConversations(convsData);
+        if (msgsData) setMessages(msgsData);
+        if (linksData) setApprovedLinks(linksData);
+        if (mediaData) setApprovedMedia(mediaData);
         
         setDbStatus('connected');
       }
 
-      // Restore session
       const session = localStorage.getItem(USER_SESSION_KEY);
       if (session) setCurrentUser(JSON.parse(session));
 
     } catch (err) {
-      console.error("Connectivity issue:", err);
+      console.error("Cloud error during load:", err);
       setDbStatus('error');
-      const session = localStorage.getItem(USER_SESSION_KEY);
-      if (session) setCurrentUser(JSON.parse(session));
     }
   };
 
@@ -142,7 +140,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
     },
     agents,
-    addAgent: async (a) => { await apiService.put('agents', a); setAgents(p => [...p, a]); },
+    addAgent: async (a) => { 
+      await apiService.put('agents', a); 
+      setAgents(prev => [...prev, a]); 
+    },
     removeAgent: async (id) => { await apiService.delete('agents', id); setAgents(p => p.filter(a => a.id !== id)); },
     updateUser: async (id, u) => {
       const updated = agents.map(a => a.id === id ? { ...a, ...u } : a);
@@ -151,14 +152,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (agent) await apiService.put('agents', agent);
     },
     login: async (e, p) => {
-      // CRITICAL: MASTER ADMIN (ZAYN) ALWAYS WORKS FOR SYSTEM ACCESS
       if (e === MASTER_ADMIN.email && p === MASTER_ADMIN.password) {
         setCurrentUser(MASTER_ADMIN);
         localStorage.setItem(USER_SESSION_KEY, JSON.stringify(MASTER_ADMIN));
         return true;
       }
-
-      // Check Cloud Database next
       try {
         const remoteAgents = await apiService.getAll<User>('agents');
         const remoteUser = remoteAgents.find(u => u.email === e && u.password === p);
@@ -167,11 +165,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           localStorage.setItem(USER_SESSION_KEY, JSON.stringify(remoteUser));
           return true;
         }
-      } catch (err) {
-        console.warn("DB Auth unavailable, falling back to local mocks");
-      }
-
-      // Local Mock fallback
+      } catch (err) {}
       const localUser = MOCK_USERS.find(u => u.email === e && u.password === p);
       if (localUser) {
         setCurrentUser(localUser);
@@ -225,6 +219,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ]
     },
     dbStatus,
+    dbName,
+    updateDbName: async (name) => {
+      apiService.setDatabase(name);
+      setDbName(name);
+      await loadDataFromCloud();
+    },
     clearLocalChats: async () => {
       await apiService.clearStore('conversations');
       await apiService.clearStore('messages');
